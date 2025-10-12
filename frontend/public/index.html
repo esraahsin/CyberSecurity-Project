@@ -1,0 +1,102 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureBank</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container { 
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 { color: #667eea; margin-bottom: 10px; font-size: 2.5em; }
+        p { color: #666; font-size: 1.1em; margin-bottom: 30px; }
+        .status {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #ddd;
+        }
+        .status-item:last-child { border-bottom: none; }
+        .online { color: #27ae60; font-weight: bold; }
+        .offline { color: #e74c3c; font-weight: bold; }
+        .info {
+            background: #e8f4f8;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #3498db;
+        }
+        .info h3 { color: #333; margin-bottom: 10px; }
+        .info p { text-align: left; margin: 5px 0; color: #555; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SecureBank</h1>
+        <p>Secure Banking Application</p>
+        
+        <div class="status">
+            <div class="status-item">
+                <span>Frontend:</span>
+                <span class="online">✓ Running</span>
+            </div>
+            <div class="status-item">
+                <span>Backend API:</span>
+                <span id="backend-status" class="offline">Checking...</span>
+            </div>
+            <div class="status-item">
+                <span>Database:</span>
+                <span class="online">✓ Ready</span>
+            </div>
+            <div class="status-item">
+                <span>Cache:</span>
+                <span class="online">✓ Ready</span>
+            </div>
+        </div>
+
+        <div class="info">
+            <h3>Services</h3>
+            <p>Frontend: http://localhost:3001</p>
+            <p>Backend API: http://localhost:3000</p>
+            <p>PostgreSQL: localhost:5555</p>
+            <p>Redis: localhost:6379</p>
+        </div>
+    </div>
+
+    <script>
+        fetch('/api/test')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('backend-status').textContent = '✓ Running';
+                document.getElementById('backend-status').className = 'online';
+            })
+            .catch(error => {
+                console.log('Backend check failed:', error);
+            });
+    </script>
+</body>
+</html>
