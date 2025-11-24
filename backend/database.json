@@ -1,0 +1,26 @@
+{
+  "dev": {
+    "host": "localhost",
+    "port": 5555,
+    "database": "securebank",
+    "user": "bankadmin",
+    "password": "SecurePassword123!@#",
+    "schema": "public"
+  },
+  "test": {
+    "host": "localhost",
+    "port": 5555,
+    "database": "securebank_test",
+    "user": "bankadmin",
+    "password": "SecurePassword123!@#",
+    "schema": "public"
+  },
+  "production": {
+    "host": "postgres",
+    "port": 5432,
+    "database": "securebank",
+    "user": "bankadmin",
+    "password": "${DB_PASSWORD}",
+    "schema": "public"
+  }
+}
