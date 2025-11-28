@@ -20,7 +20,7 @@ const {
   cleanObject,
   pick,
   omit
-} = require('../../src/utils/helpers');
+} = require('../../utils/helpers');
 
 describe('Helpers Utils', () => {
 

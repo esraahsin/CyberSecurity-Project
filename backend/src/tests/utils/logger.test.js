@@ -2,7 +2,7 @@
  * Tests pour le logger
  */
 
-const logger = require('../../src/utils/logger');
+const logger = require('../../utils/logger');
 
 describe('Logger Utils', () => {
   
