@@ -11,7 +11,7 @@ services:
     ports:
       - "5555:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bankadmin"]
+      test: ["CMD-SHELL", "pg_isready -U bankadmin -d securebank"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -54,11 +54,17 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       ENCRYPTION_IV: ${ENCRYPTION_IV}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: securebank
+      DB_USER: bankadmin
+      DB_PASSWORD: ${DB_PASSWORD}
     ports:
       - "3000:3000"
     volumes:
       - ./backend/src:/app/src
       - ./backend/tests:/app/tests
+      - ./backend/database:/app/database 
     networks:
       - securebank-network
     restart: unless-stopped

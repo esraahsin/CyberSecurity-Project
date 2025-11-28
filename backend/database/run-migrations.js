@@ -6,7 +6,7 @@ require('dotenv').config();
 
 const client = new Client({
   host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT, 10) || 5555,
+  port: parseInt(process.env.DB_PORT, 10) || 5432,
   database: process.env.DB_NAME || 'securebank',
   user: process.env.DB_USER || 'bankadmin',
   password: String(process.env.DB_PASSWORD || ''), // <<< force string
