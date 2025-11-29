@@ -3,7 +3,6 @@
  * Gère toutes les erreurs de l'application de manière centralisée
  * @module middleware/error
  */
-
 const logger = require('../utils/logger');
 
 /**
@@ -20,7 +19,6 @@ const formatError = (err) => {
       message: 'Token verification failed'
     };
   }
-
   if (err.name === 'TokenExpiredError') {
     return {
       status: 401,
@@ -97,7 +95,9 @@ const errorHandler = (err, req, res, next) => {
   // Ne jamais exposer stack trace en production
   const response = {
     error: formatted.error,
-    message: formatted.message
+    message: formatted.message,
+    timestamp: new Date().toISOString(), // ✅ ADDED
+    path: req.path                       // ✅ ADDED
   };
 
   if (process.env.NODE_ENV !== 'production') {

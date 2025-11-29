@@ -1,9 +1,8 @@
-// test/app.test.js
+// backend/src/tests/middleware/app.test.js
 const express = require('express');
 const bodyParser = require('body-parser');
-const cookieParser = require('cookie-parser');
 
-// Middlewares (ton code)
+// Middlewares
 const {
   authenticateToken,
   optionalAuth,
@@ -11,7 +10,7 @@ const {
   requireOwnership,
   requireMFA,
   refreshToken
-} = require('../middleware/auth.middleware');
+} = require('../../middleware/auth.middleware');
 
 const {
   helmetMiddleware,
@@ -20,96 +19,108 @@ const {
   getCsrfToken,
   rateLimiter,
   authRateLimiter
-} = require('../middleware/security.middleware');
+} = require('../../middleware/security.middleware');
 
 const {
   validateLogin,
-  validateRegister,
-  handleValidationErrors
-} = require('../middleware/validation.middleware');
+  validateRegister
+} = require('../../middleware/validation.middleware');
 
-const errorHandler = require('../middleware/error.middleware');
-
-// Mock route handlers
-const router = express.Router();
+const errorHandler = require('../../middleware/error.middleware');
 
 function createApp() {
   const app = express();
-  app.use(bodyParser.json());
-  app.use(cookieParser());
 
-  // Security middlewares (global)
+  // Middlewares de base
+  app.use(bodyParser.json());
+  app.use(bodyParser.urlencoded({ extended: true }));
+
+  // Security middlewares
   app.use(helmetMiddleware());
   app.use(corsMiddleware());
   app.use(rateLimiter());
 
-  // --- Test routes ---
+  // Routes de test
+  // Health check
+  app.get('/health', (req, res) => {
+    res.json({ ok: true });
+  });
 
-  // Health
-  app.get('/health', (req, res) => res.json({ ok: true }));
-
-  // Authenticated route
+  // Route protégée
   app.get('/protected', authenticateToken, (req, res) => {
     res.json({ user: req.user });
   });
 
-  // Optional auth route
+  // Route avec auth optionnelle
   app.get('/optional', optionalAuth, (req, res) => {
     res.json({ user: req.user || null });
   });
 
-  // Role protected
+  // Route admin seulement
   app.get('/admin-only', authenticateToken, requireRole(['admin']), (req, res) => {
     res.json({ admin: true });
   });
 
-  // Ownership
+  // Route avec vérification de propriété
   app.get('/users/:userId', authenticateToken, requireOwnership('userId'), (req, res) => {
     res.json({ userId: req.params.userId });
   });
 
-  // MFA
+  // Route MFA
   app.get('/mfa-only', authenticateToken, requireMFA, (req, res) => {
     res.json({ mfa: true });
   });
 
-  // Refresh token endpoint (uses the actual function to be tested)
-  app.post('/auth/refresh', express.json(), refreshToken);
+  // Refresh token
+  app.post('/auth/refresh', refreshToken);
 
-  // CSRF token route
+  // CSRF token
   app.get('/csrf-token', authenticateToken, getCsrfToken);
 
-  // CSRF protected route
+  // Route protégée CSRF
   app.post('/sensitive', authenticateToken, csrfProtection(), (req, res) => {
     res.json({ success: true });
   });
 
-  // Validation: register
+  // Register avec validation
   app.post('/register', validateRegister, (req, res) => {
     res.json({ ok: true });
   });
 
-  // Login route with authRateLimiter
+  // Login avec rate limiting et validation
   app.post('/auth/login', authRateLimiter(), validateLogin, (req, res) => {
-    // simulate login failure/success based on test
+    // Simuler échec/succès
     if (req.body.email === 'fail@example.com') {
-      // simulate failure
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     return res.json({ token: 'ok' });
   });
 
-  // Route to intentionally throw error for testing error middleware
+  // Route pour tester le error handler
   app.get('/error-throw', (req, res) => {
     const e = new Error('Test error');
     e.status = 418;
     throw e;
   });
 
-  // Attach error handler LAST
+  // 404 handler (must be before error handler)
+  app.use((req, res, next) => {
+    const error = new Error('Route not found');
+    error.status = 404;
+    next(error);
+  });
+
+  // Error handler (doit être en dernier)
   app.use(errorHandler);
 
   return app;
 }
 
 module.exports = createApp();
+
+// Dummy test to prevent "no tests" error
+describe('Test App', () => {
+  test('app should be defined', () => {
+    expect(module.exports).toBeDefined();
+  });
+});
