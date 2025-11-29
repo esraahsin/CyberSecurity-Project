@@ -20,7 +20,7 @@ const {
   validateLength,
   validateJSON,
   createValidator
-} = require('../../src/utils/validators');
+} = require('../../utils/validators');
 
 describe('Validators Utils', () => {
 
