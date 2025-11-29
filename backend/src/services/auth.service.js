@@ -14,8 +14,6 @@ const logger = require('../utils/logger');
 class AuthService {
   /**
    * Inscription d'un nouvel utilisateur
-   * @param {Object} userData - Données de l'utilisateur
-   * @returns {Promise<Object>} Utilisateur créé
    */
   async register(userData) {
     const { email, username, password, firstName, lastName, phoneNumber, dateOfBirth } = userData;
@@ -79,17 +77,13 @@ class AuthService {
 
   /**
    * Connexion d'un utilisateur
-   * @param {string} emailOrUsername - Email ou username
-   * @param {string} password - Mot de passe
-   * @param {string} ipAddress - Adresse IP
-   * @returns {Promise<Object>} Tokens et données utilisateur
    */
   async login(emailOrUsername, password, ipAddress = '0.0.0.0') {
     try {
       // Rechercher l'utilisateur
       const result = await pool.query(
         `SELECT id, email, username, password_hash, first_name, last_name, 
-                account_status, failed_login_attempts, account_locked_until, mfa_enabled
+                account_status, failed_login_attempts, account_locked_until, mfa_enabled, role
          FROM users 
          WHERE email = $1 OR username = $1`,
         [emailOrUsername]
@@ -147,7 +141,8 @@ class AuthService {
           username: user.username,
           firstName: user.first_name,
           lastName: user.last_name,
-          mfaEnabled: user.mfa_enabled
+          mfaEnabled: user.mfa_enabled,
+          role: user.role
         },
         accessToken,
         refreshToken
@@ -161,8 +156,6 @@ class AuthService {
 
   /**
    * Génère un access token JWT
-   * @param {Object} user - Données utilisateur
-   * @returns {string} JWT token
    */
   generateJWT(user) {
     const payload = {
@@ -181,8 +174,6 @@ class AuthService {
 
   /**
    * Génère un refresh token JWT
-   * @param {Object} user - Données utilisateur
-   * @returns {string} Refresh token
    */
   generateRefreshToken(user) {
     const payload = {
@@ -199,8 +190,6 @@ class AuthService {
 
   /**
    * Vérifie un JWT token
-   * @param {string} token - JWT token
-   * @returns {Promise<Object>} Payload décodé
    */
   async verifyJWT(token) {
     try {
@@ -231,8 +220,6 @@ class AuthService {
 
   /**
    * Rafraîchit l'access token avec un refresh token
-   * @param {string} refreshToken - Refresh token
-   * @returns {Promise<Object>} Nouveaux tokens
    */
   async refreshToken(refreshToken) {
     try {
@@ -272,8 +259,11 @@ class AuthService {
       const newAccessToken = this.generateJWT(user);
       const newRefreshToken = this.generateRefreshToken(user);
 
-      // Blacklister l'ancien refresh token
-      await this._blacklistToken(refreshToken, jwtConfig.refreshExpiresIn);
+      // Blacklister l'ancien refresh token avec la bonne expiration
+      const expiresIn = decoded.exp - Math.floor(Date.now() / 1000);
+      if (expiresIn > 0) {
+        await redisClient.setEx(`blacklist:${refreshToken}`, expiresIn, 'revoked');
+      }
 
       logger.info('Token refreshed successfully', { userId: user.id });
 
@@ -290,8 +280,6 @@ class AuthService {
 
   /**
    * Déconnexion - Blacklist le token
-   * @param {string} token - Access token
-   * @returns {Promise<void>}
    */
   async logout(token) {
     try {
@@ -351,7 +339,8 @@ class AuthService {
       [userId, maxAttempts]
     );
 
-    if (result.rows[0].failed_login_attempts >= maxAttempts) {
+    // Vérifier que le résultat existe
+    if (result.rows && result.rows.length > 0 && result.rows[0].failed_login_attempts >= maxAttempts) {
       logger.warn('Account locked due to too many failed attempts', { userId });
     }
   }

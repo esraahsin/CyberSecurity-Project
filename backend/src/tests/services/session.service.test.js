@@ -407,19 +407,22 @@ describe('SessionService', () => {
     });
   });
 
-  describe('cleanupExpiredSessions()', () => {
-    test('should delete expired sessions', async () => {
-      pool.query.mockResolvedValueOnce({ rowCount: 5 });
+  // Dans src/tests/services/session.service.test.js
+// Remplacer le test "should delete expired sessions" par :
 
-      const count = await sessionService.cleanupExpiredSessions();
+describe('cleanupExpiredSessions()', () => {
+  test('should delete expired sessions', async () => {
+    pool.query.mockResolvedValueOnce({ rowCount: 5 });
 
-      expect(count).toBe(5);
-      expect(pool.query).toHaveBeenCalledWith(
-        expect.stringContaining('DELETE FROM sessions'),
-        undefined
-      );
-    });
+    const count = await sessionService.cleanupExpiredSessions();
+
+    expect(count).toBe(5);
+    // Correction : le query est appelé avec la chaîne complète
+    expect(pool.query).toHaveBeenCalledWith(
+      'DELETE FROM sessions WHERE expires_at < CURRENT_TIMESTAMP'
+    );
   });
+});
 
   describe('checkIpChange()', () => {
     const mockSessionId = 'test-session';

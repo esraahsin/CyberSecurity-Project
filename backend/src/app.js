@@ -1,57 +1,122 @@
-// backend/src/app.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 
+// Middleware personnalisés
+const { helmetMiddleware, corsMiddleware, rateLimiter } = require('./middleware/security.middleware');
+const errorHandler = require('./middleware/error.middleware');
+const logger = require('./utils/logger');
+
+// Routes
+const authRoutes = require('./routes/auth.routes');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(helmet());
-app.use(cors());
-app.use(morgan('combined'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// ============================================
+// Middleware de sécurité
+// ============================================
+app.use(helmetMiddleware());
+app.use(corsMiddleware());
+app.use(rateLimiter());
 
+// ============================================
+// Middleware standards
+// ============================================
+app.use(morgan('combined', { stream: logger.stream }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ============================================
 // Health check endpoint
+// ============================================
 app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'OK',
     timestamp: new Date().toISOString(),
-    service: 'SecureBank API'
+    service: 'SecureBank API',
+    version: '1.0.0',
+    uptime: process.uptime()
   });
 });
+
+// ============================================
+// API Routes
+// ============================================
+app.use('/api/auth', authRoutes);
+// app.use('/api/accounts', accountRoutes); // À venir
+// app.use('/api/transactions', transactionRoutes); // À venir
+// app.use('/api/users', userRoutes); // À venir
 
 // Basic test endpoint
 app.get('/api/test', (req, res) => {
   res.status(200).json({
     message: 'SecureBank API is running',
-    version: '1.0.0'
+    version: '1.0.0',
+    timestamp: new Date().toISOString()
   });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred'
-  });
-});
-
+// ============================================
 // 404 handler
+// ============================================
 app.use((req, res) => {
   res.status(404).json({
+    success: false,
     error: 'Not Found',
-    path: req.path
+    message: `Cannot ${req.method} ${req.path}`,
+    availableEndpoints: [
+      'GET /health',
+      'GET /api/test',
+      'POST /api/auth/register',
+      'POST /api/auth/login',
+      'POST /api/auth/logout',
+      'POST /api/auth/refresh',
+      'GET /api/auth/me'
+    ]
   });
 });
 
+// ============================================
+// Error handling middleware (doit être en dernier)
+// ============================================
+app.use(errorHandler);
+
+// ============================================
 // Start server
-app.listen(PORT, () => {
-  console.log(`🚀 SecureBank API running on http://localhost:${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
-  console.log(`Environment: ${process.env.NODE_ENV}`);
-});
+// ============================================
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`
+╔════════════════════════════════════════╗
+║       🚀 SecureBank API Started       ║
+╠════════════════════════════════════════╣
+║ Port:        ${PORT}                        ║
+║ Environment: ${process.env.NODE_ENV || 'development'}              ║
+║ Health:      http://localhost:${PORT}/health  ║
+║ API Docs:    http://localhost:${PORT}/api     ║
+╚════════════════════════════════════════╝
+    `);
+    
+    logger.info('SecureBank API server started', {
+      port: PORT,
+      environment: process.env.NODE_ENV,
+      nodeVersion: process.version
+    });
+  });
+
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    logger.info('SIGTERM signal received: closing HTTP server');
+    process.exit(0);
+  });
+
+  process.on('SIGINT', () => {
+    logger.info('SIGINT signal received: closing HTTP server');
+    process.exit(0);
+  });
+}
+
+module.exports = app;
