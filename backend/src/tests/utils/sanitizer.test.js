@@ -14,7 +14,7 @@ const {
   sanitizeSearchQuery,
   sanitizeForLogging,
   sanitizePaginationParams
-} = require('../../src/utils/sanitizer');
+} = require('../../utils/sanitizer');
 
 describe('Sanitizer Utils', () => {
 
