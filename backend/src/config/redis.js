@@ -1,3 +1,4 @@
+// backend/src/config/redis.js
 const redis = require('redis');
 require('dotenv').config();
 
@@ -9,11 +10,27 @@ const redisClient = redis.createClient({
   password: process.env.REDIS_PASSWORD || undefined,
 });
 
-redisClient.on('connect', () => console.log('✅ Connected to Redis'));
-redisClient.on('error', (err) => console.error('❌ Redis error', err));
+redisClient.on('connect', () => {
+  if (process.env.NODE_ENV !== 'test') {
+    console.log('✅ Connected to Redis');
+  }
+});
 
-(async () => {
-  await redisClient.connect();
-})();
+redisClient.on('error', (err) => {
+  if (process.env.NODE_ENV !== 'test') {
+    console.error('❌ Redis error', err);
+  }
+});
+
+// Ne connecter que si pas en mode test
+if (process.env.NODE_ENV !== 'test') {
+  (async () => {
+    try {
+      await redisClient.connect();
+    } catch (err) {
+      console.error('Failed to connect to Redis:', err);
+    }
+  })();
+}
 
 module.exports = redisClient;

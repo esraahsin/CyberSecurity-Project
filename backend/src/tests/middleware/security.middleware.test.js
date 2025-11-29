@@ -1,11 +1,11 @@
-// tests/security.middleware.test.js
+// tests/middleware/security.middleware.test.js
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
-const app = require('../test/app.test');
-const redisClient = require('../config/redis');
-const jwtConfig = require('../config/jwt');
+const app = require('./app.test'); // FIXED: Changed from '../test/app.test' to './app.test'
+const redisClient = require('../../config/redis'); // FIXED: Changed from '../config/redis'
+const jwtConfig = require('../../config/jwt'); // FIXED: Changed from '../config/jwt'
 
-jest.mock('../config/redis', () => ({
+jest.mock('../../config/redis', () => ({
   get: jest.fn(),
   setEx: jest.fn(),
   set: jest.fn(),
@@ -17,7 +17,7 @@ describe('Security middlewares', () => {
   let token;
 
   beforeAll(() => {
-    token = jwt.sign(userPayload, require('../config/jwt').secret, { expiresIn: '1h' });
+    token = jwt.sign(userPayload, jwtConfig.secret, { expiresIn: '1h' });
   });
 
   beforeEach(() => {
@@ -89,6 +89,7 @@ describe('Security middlewares', () => {
     const max = parseInt(process.env.RATE_LIMIT_MAX || '100', 10);
     const calls = Math.min(10, max + 2); // try to exceed only if low
     let lastStatus = 200;
+    
     for (let i = 0; i < calls; i++) {
       // call a lightweight endpoint
       // Headers not required
@@ -97,6 +98,7 @@ describe('Security middlewares', () => {
       const r = await request(app).get('/health');
       lastStatus = r.statusCode;
     }
+    
     expect([200, 429]).toContain(lastStatus);
   });
 });
