@@ -9,7 +9,9 @@ const morgan = require('morgan');
 const { helmetMiddleware, corsMiddleware, rateLimiter } = require('./middleware/security.middleware');
 const errorHandler = require('./middleware/error.middleware');
 const logger = require('./utils/logger');
+const adminRoutes = require('./routes/admin.routes');
 
+// Après les autres routes
 // Routes
 const authRoutes = require('./routes/auth.routes');
 const accountRoutes = require('./routes/account.routes');
@@ -53,6 +55,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/transactions', transactionRoutes); // À venir
 app.use('/api/users', userRoutes); // À venir
+app.use('/api/admin', adminRoutes);
 
 // Basic test endpoint
 app.get('/api/test', (req, res) => {

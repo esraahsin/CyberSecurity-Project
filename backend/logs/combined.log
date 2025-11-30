@@ -596,3 +596,14 @@
 {"level":"info","message":"::1 - - [30/Nov/2025:21:16:06 +0000] \"GET /api/transactions/stats?period=30%20days HTTP/1.1\" 500 1861 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 21:16:06"}
 {"level":"info","message":"::1 - - [30/Nov/2025:21:16:41 +0000] \"POST /api/transactions/transfer HTTP/1.1\" 400 110 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 21:16:41"}
 {"environment":"development","level":"info","message":"SecureBank API server started","nodeVersion":"v20.18.0","port":"3000","service":"cybersecurity-api","timestamp":"2025-11-30 21:28:42"}
+{"environment":"development","level":"info","message":"SecureBank API server started","nodeVersion":"v20.18.0","port":"3000","service":"cybersecurity-api","timestamp":"2025-11-30 21:28:47"}
+{"level":"info","message":"::1 - - [30/Nov/2025:21:29:07 +0000] \"POST /api/transactions/transfer HTTP/1.1\" 400 142 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 21:29:07"}
+{"level":"info","message":"Fraud check completed","riskLevel":"LOW","riskScore":15,"service":"cybersecurity-api","timestamp":"2025-11-30 21:29:16","transactionAmount":100}
+{"amount":10000,"fromAccountId":6,"level":"info","message":"Transfer completed","service":"cybersecurity-api","timestamp":"2025-11-30 21:29:16","toAccountId":7,"transactionId":"TXN1764538156712796","userId":9}
+{"error":"invalid input syntax for type integer: \"TXN1764538156712796\"","level":"error","message":"Audit log creation failed","service":"cybersecurity-api","timestamp":"2025-11-30 21:29:16"}
+{"level":"info","message":"::1 - - [30/Nov/2025:21:29:16 +0000] \"POST /api/transactions/transfer HTTP/1.1\" 201 238 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 21:29:16"}
+{"level":"info","message":"::1 - - [30/Nov/2025:21:29:26 +0000] \"GET /api/accounts HTTP/1.1\" 200 580 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 21:29:26"}
+{"environment":"development","level":"info","message":"SecureBank API server started","nodeVersion":"v20.18.0","port":"3000","service":"cybersecurity-api","timestamp":"2025-11-30 21:40:33"}
+{"environment":"development","level":"info","message":"SecureBank API server started","nodeVersion":"v20.18.0","port":"3000","service":"cybersecurity-api","timestamp":"2025-11-30 21:40:51"}
+{"environment":"development","level":"info","message":"SecureBank API server started","nodeVersion":"v20.18.0","port":"3000","service":"cybersecurity-api","timestamp":"2025-11-30 21:41:09"}
+{"environment":"development","level":"info","message":"SecureBank API server started","nodeVersion":"v20.18.0","port":"3000","service":"cybersecurity-api","timestamp":"2025-11-30 21:41:27"}
