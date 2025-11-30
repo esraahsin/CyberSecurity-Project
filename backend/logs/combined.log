@@ -305,3 +305,23 @@
 {"environment":"development","level":"info","message":"SecureBank API server started","nodeVersion":"v20.18.0","port":"3000","service":"cybersecurity-api","timestamp":"2025-11-30 14:45:58"}
 {"level":"info","message":"::1 - - [30/Nov/2025:13:46:15 +0000] \"GET /api/accounts HTTP/1.1\" 404 244 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 14:46:15"}
 {"level":"info","message":"SIGINT signal received: closing HTTP server","service":"cybersecurity-api","timestamp":"2025-11-30 14:46:31"}
+{"environment":"development","level":"info","message":"SecureBank API server started","nodeVersion":"v20.18.0","port":"3000","service":"cybersecurity-api","timestamp":"2025-11-30 14:48:15"}
+{"error":"jwt expired","event":"INVALID_TOKEN","ip":"::1","level":"warn","message":"Security Event","service":"cybersecurity-api","timestamp":"2025-11-30T13:48:24.820Z"}
+{"level":"info","message":"::1 - - [30/Nov/2025:13:48:24 +0000] \"GET /api/accounts HTTP/1.1\" 403 63 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 14:48:24"}
+{"email":"test@example.com","ipAddress":"::1","level":"info","message":"User logged in successfully","service":"cybersecurity-api","timestamp":"2025-11-30 14:49:12","userId":5}
+{"ipAddress":"::1","level":"info","message":"Session created","service":"cybersecurity-api","sessionId":"5355a71bcc295376f27a564bfb05cb24eae2867d5bfa4bc602d837948d3147b5","timestamp":"2025-11-30 14:49:12","userId":5}
+{"level":"info","message":"::1 - - [30/Nov/2025:13:49:12 +0000] \"POST /api/auth/login HTTP/1.1\" 200 856 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 14:49:12"}
+{"email":"test@example.com","ipAddress":"::1","level":"info","message":"User logged in successfully","service":"cybersecurity-api","timestamp":"2025-11-30 14:49:47","userId":5}
+{"ipAddress":"::1","level":"info","message":"Session created","service":"cybersecurity-api","sessionId":"855725e12cfc92bf74a64bad166a7ad4a1e41928de3f3c3263d4d44a20e36f1c","timestamp":"2025-11-30 14:49:47","userId":5}
+{"level":"info","message":"::1 - - [30/Nov/2025:13:49:47 +0000] \"POST /api/auth/login HTTP/1.1\" 200 856 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 14:49:47"}
+{"level":"info","message":"::1 - - [30/Nov/2025:13:51:07 +0000] \"POST /api/accounts HTTP/1.1\" 401 58 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 14:51:07"}
+{"level":"info","message":"::1 - - [30/Nov/2025:13:51:28 +0000] \"POST /api/accounts HTTP/1.1\" 401 58 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 14:51:28"}
+{"email":"test@example.com","ipAddress":"::1","level":"info","message":"User logged in successfully","service":"cybersecurity-api","timestamp":"2025-11-30 14:52:04","userId":5}
+{"ipAddress":"::1","level":"info","message":"Session created","service":"cybersecurity-api","sessionId":"a20541abd2fbbc7ff48f160ad90a78fa33290f0cf0afd5acd360881ecbd0bbce","timestamp":"2025-11-30 14:52:04","userId":5}
+{"level":"info","message":"::1 - - [30/Nov/2025:13:52:04 +0000] \"POST /api/auth/login HTTP/1.1\" 200 856 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 14:52:04"}
+{"level":"info","message":"Token refreshed successfully","service":"cybersecurity-api","timestamp":"2025-11-30 14:53:13","userId":5}
+{"level":"info","message":"::1 - - [30/Nov/2025:13:53:13 +0000] \"POST /api/auth/refresh HTTP/1.1\" 200 616 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 14:53:13"}
+{"level":"info","message":"::1 - - [30/Nov/2025:13:54:43 +0000] \"POST /api/accounts HTTP/1.1\" 401 58 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 14:54:43"}
+{"email":"test@example.com","ipAddress":"::1","level":"info","message":"User logged in successfully","service":"cybersecurity-api","timestamp":"2025-11-30 14:55:31","userId":5}
+{"ipAddress":"::1","level":"info","message":"Session created","service":"cybersecurity-api","sessionId":"77821c96c1dcfbdb10a6a4c5010324435a05ec5565a4ea4c4d131ccd64ae6524","timestamp":"2025-11-30 14:55:31","userId":5}
+{"level":"info","message":"::1 - - [30/Nov/2025:13:55:31 +0000] \"POST /api/auth/login HTTP/1.1\" 200 856 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 14:55:31"}
