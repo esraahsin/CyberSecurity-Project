@@ -1,6 +1,5 @@
 /**
- * Service d'authentification
- * Gère l'inscription, la connexion et les tokens JWT
+ * Service d'authentification - COMPLETE FIXED VERSION
  * @module services/auth.service
  */
 
@@ -118,9 +117,19 @@ class AuthService {
       // Réinitialiser les tentatives échouées
       await this._resetFailedAttempts(user.id);
 
-      // Générer les tokens
+      // Invalider toutes les anciennes sessions/tokens
+      await this._invalidateOldUserTokens(user.id);
+
+      // Générer de NOUVEAUX tokens
       const accessToken = this.generateJWT(user);
       const refreshToken = this.generateRefreshToken(user);
+
+      // Stocker le nouveau refresh token dans Redis
+      await redisClient.setEx(
+        `refresh:${user.id}`,
+        7 * 24 * 60 * 60, // 7 jours
+        refreshToken
+      );
 
       // Mettre à jour la dernière connexion
       await pool.query(
@@ -162,7 +171,8 @@ class AuthService {
       userId: user.id,
       email: user.email,
       username: user.username,
-      role: user.role || 'user'
+      role: user.role || 'user',
+      // Don't manually set iat - jwt.sign does it automatically
     };
 
     return jwt.sign(payload, jwtConfig.secret, {
@@ -178,7 +188,7 @@ class AuthService {
   generateRefreshToken(user) {
     const payload = {
       userId: user.id,
-      type: 'refresh'
+      type: 'refresh',
     };
 
     return jwt.sign(payload, jwtConfig.refreshSecret, {
@@ -193,7 +203,7 @@ class AuthService {
    */
   async verifyJWT(token) {
     try {
-      // Vérifier si le token est en blacklist (dans Redis)
+      // Vérifier si le token est en blacklist
       const isBlacklisted = await redisClient.get(`blacklist:${token}`);
       if (isBlacklisted) {
         throw new Error('Token has been revoked');
@@ -233,10 +243,15 @@ class AuthService {
         throw new Error('Invalid refresh token');
       }
 
-      // Vérifier si le token est en blacklist
-      const isBlacklisted = await redisClient.get(`blacklist:${refreshToken}`);
-      if (isBlacklisted) {
-        throw new Error('Refresh token has been revoked');
+      // Vérifier si le refresh token stocké correspond
+      const storedToken = await redisClient.get(`refresh:${decoded.userId}`);
+      
+      if (!storedToken) {
+        throw new Error('Refresh token not found or expired');
+      }
+
+      if (storedToken !== refreshToken) {
+        throw new Error('Refresh token mismatch');
       }
 
       // Récupérer l'utilisateur
@@ -255,15 +270,16 @@ class AuthService {
         throw new Error('Account is not active');
       }
 
-      // Générer de nouveaux tokens
+      // Générer de NOUVEAUX tokens (rotation)
       const newAccessToken = this.generateJWT(user);
       const newRefreshToken = this.generateRefreshToken(user);
 
-      // Blacklister l'ancien refresh token avec la bonne expiration
-      const expiresIn = decoded.exp - Math.floor(Date.now() / 1000);
-      if (expiresIn > 0) {
-        await redisClient.setEx(`blacklist:${refreshToken}`, expiresIn, 'revoked');
-      }
+      // Mettre à jour le refresh token dans Redis
+      await redisClient.setEx(
+        `refresh:${user.id}`,
+        7 * 24 * 60 * 60, // 7 jours
+        newRefreshToken
+      );
 
       logger.info('Token refreshed successfully', { userId: user.id });
 
@@ -290,19 +306,41 @@ class AuthService {
         throw new Error('Invalid token');
       }
 
-      // Calculer le temps restant avant expiration
       const expiresIn = decoded.exp - Math.floor(Date.now() / 1000);
 
-      // Ajouter à la blacklist si pas encore expiré
+      // Blacklister l'access token
       if (expiresIn > 0) {
         await this._blacklistToken(token, expiresIn);
       }
+
+      // Supprimer aussi le refresh token
+      await redisClient.del(`refresh:${decoded.userId}`);
+      await redisClient.del(`session:${decoded.userId}`);
 
       logger.info('User logged out', { userId: decoded.userId });
 
     } catch (error) {
       logger.error('Logout error', { error: error.message });
       throw error;
+    }
+  }
+
+  /**
+   * Invalide tous les anciens tokens d'un utilisateur
+   * @private
+   */
+  async _invalidateOldUserTokens(userId) {
+    try {
+      // Supprimer l'ancien refresh token
+      await redisClient.del(`refresh:${userId}`);
+      
+      // Supprimer toutes les sessions actives de l'utilisateur
+      await redisClient.del(`session:${userId}`);
+      
+      logger.info('Old tokens invalidated for user', { userId });
+    } catch (error) {
+      logger.error('Error invalidating old tokens', { error: error.message, userId });
+      // Ne pas throw - ce n'est pas critique
     }
   }
 
@@ -324,7 +362,7 @@ class AuthService {
    */
   async _incrementFailedAttempts(userId) {
     const maxAttempts = parseInt(process.env.MAX_LOGIN_ATTEMPTS) || 5;
-    const lockDuration = parseInt(process.env.ACCOUNT_LOCK_DURATION) || 30; // minutes
+    const lockDuration = parseInt(process.env.ACCOUNT_LOCK_DURATION) || 30;
 
     const result = await pool.query(
       `UPDATE users 
@@ -339,7 +377,6 @@ class AuthService {
       [userId, maxAttempts]
     );
 
-    // Vérifier que le résultat existe
     if (result.rows && result.rows.length > 0 && result.rows[0].failed_login_attempts >= maxAttempts) {
       logger.warn('Account locked due to too many failed attempts', { userId });
     }
