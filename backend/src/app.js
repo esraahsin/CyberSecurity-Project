@@ -1,3 +1,4 @@
+// backend/src/app.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -11,6 +12,7 @@ const logger = require('./utils/logger');
 
 // Routes
 const authRoutes = require('./routes/auth.routes');
+const accountRoutes = require('./routes/account.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -46,7 +48,7 @@ app.get('/health', (req, res) => {
 // API Routes
 // ============================================
 app.use('/api/auth', authRoutes);
-// app.use('/api/accounts', accountRoutes); // À venir
+app.use('/api/accounts', accountRoutes);
 // app.use('/api/transactions', transactionRoutes); // À venir
 // app.use('/api/users', userRoutes); // À venir
 
