@@ -1,6 +1,5 @@
 /**
- * Service de gestion des sessions utilisateurs
- * Gère les sessions actives, la validation et la sécurité
+ * Service de gestion des sessions utilisateurs - FIXED VERSION
  * @module services/session.service
  */
 
@@ -12,8 +11,6 @@ const logger = require('../utils/logger');
 class SessionService {
   /**
    * Crée une nouvelle session utilisateur
-   * @param {Object} sessionData - Données de session
-   * @returns {Promise<Object>} Session créée
    */
   async createSession(sessionData) {
     const {
@@ -27,22 +24,20 @@ class SessionService {
     } = sessionData;
 
     try {
-      // Générer un ID de session unique
       const sessionId = this._generateSessionId();
 
-      // Calculer l'expiration (15 minutes par défaut)
-      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      // ✅ FIX 1: Expiration alignée avec JWT (1 jour au lieu de 15 minutes)
+      const expiresIn = 24 * 60 * 60 * 1000; // 1 jour en millisecondes
+      const expiresAt = new Date(Date.now() + expiresIn);
 
-      // Extraire les informations de localisation (si disponibles)
-      const { country = null, city = null } = deviceInfo;
-
-      // Créer la session en base de données
+      // ✅ FIX 2: Utiliser CURRENT_TIMESTAMP pour éviter décalage timezone
       const result = await pool.query(
         `INSERT INTO sessions (
           session_id, user_id, access_token, refresh_token,
           ip_address, user_agent, device_info,
-          country, city, is_active, mfa_verified, expires_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $11)
+          country, city, is_active, mfa_verified, 
+          expires_at, created_at, last_activity
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $11, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         RETURNING id, session_id, created_at, expires_at`,
         [
           sessionId,
@@ -52,8 +47,8 @@ class SessionService {
           ipAddress,
           userAgent,
           JSON.stringify(deviceInfo),
-          country,
-          city,
+          deviceInfo.country || null,
+          deviceInfo.city || null,
           mfaVerified,
           expiresAt
         ]
@@ -61,18 +56,19 @@ class SessionService {
 
       const session = result.rows[0];
 
-      // Stocker la session dans Redis pour un accès rapide
+      // ✅ FIX 3: Cache Redis avec même durée (1 jour = 86400 secondes)
       await this._cacheSession(sessionId, {
         userId,
         ipAddress,
-        expiresAt: expiresAt.toISOString(),
+        expiresAt: session.expires_at.toISOString(),
         mfaVerified
-      });
+      }, 86400); // 24h en secondes
 
       logger.info('Session created', {
         userId,
         sessionId,
-        ipAddress
+        ipAddress,
+        expiresAt: session.expires_at
       });
 
       return {
@@ -89,8 +85,6 @@ class SessionService {
 
   /**
    * Valide une session existante
-   * @param {string} sessionId - ID de session
-   * @returns {Promise<Object>} Session valide
    */
   async validateSession(sessionId) {
     try {
@@ -98,8 +92,16 @@ class SessionService {
       const cachedSession = await this._getCachedSession(sessionId);
       
       if (cachedSession) {
-        // Vérifier l'expiration
-        if (new Date(cachedSession.expiresAt) < new Date()) {
+        // ✅ FIX 4: Comparaison timezone-safe
+        const now = new Date();
+        const expiration = new Date(cachedSession.expiresAt);
+        
+        if (expiration <= now) {
+          logger.warn('Session expired (from cache)', { 
+            sessionId,
+            now: now.toISOString(),
+            expiration: cachedSession.expiresAt
+          });
           await this.endSession(sessionId);
           throw new Error('Session expired');
         }
@@ -109,7 +111,8 @@ class SessionService {
       // Si pas en cache, chercher en base de données
       const result = await pool.query(
         `SELECT session_id, user_id, ip_address, is_active, 
-                mfa_verified, expires_at, last_activity
+                mfa_verified, expires_at, last_activity,
+                EXTRACT(EPOCH FROM (expires_at - CURRENT_TIMESTAMP)) as seconds_remaining
          FROM sessions 
          WHERE session_id = $1 AND is_active = true`,
         [sessionId]
@@ -121,8 +124,13 @@ class SessionService {
 
       const session = result.rows[0];
 
-      // Vérifier l'expiration
-      if (new Date(session.expires_at) < new Date()) {
+      // ✅ FIX 5: Vérifier avec le temps serveur PostgreSQL
+      if (parseFloat(session.seconds_remaining) <= 0) {
+        logger.warn('Session expired (from DB)', { 
+          sessionId,
+          secondsRemaining: session.seconds_remaining,
+          expiresAt: session.expires_at
+        });
         await this.endSession(sessionId);
         throw new Error('Session expired');
       }
@@ -131,12 +139,13 @@ class SessionService {
       await this._updateActivity(sessionId);
 
       // Recacher la session
+      const remainingSeconds = Math.floor(parseFloat(session.seconds_remaining));
       await this._cacheSession(sessionId, {
         userId: session.user_id,
         ipAddress: session.ip_address,
         expiresAt: session.expires_at.toISOString(),
         mfaVerified: session.mfa_verified
-      });
+      }, remainingSeconds);
 
       return {
         sessionId: session.session_id,
@@ -157,19 +166,18 @@ class SessionService {
 
   /**
    * Rafraîchit une session (prolonge l'expiration)
-   * @param {string} sessionId - ID de session
-   * @returns {Promise<Object>} Session mise à jour
    */
   async refreshSession(sessionId) {
     try {
-      // Nouvelle expiration (15 minutes)
-      const newExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      // ✅ FIX 6: Nouvelle expiration = maintenant + 1 jour
+      const newExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
       const result = await pool.query(
         `UPDATE sessions 
          SET expires_at = $2, last_activity = CURRENT_TIMESTAMP
          WHERE session_id = $1 AND is_active = true
-         RETURNING session_id, expires_at`,
+         RETURNING session_id, expires_at, 
+                   EXTRACT(EPOCH FROM (expires_at - CURRENT_TIMESTAMP)) as seconds_remaining`,
         [sessionId, newExpiresAt]
       );
 
@@ -177,14 +185,15 @@ class SessionService {
         throw new Error('Session not found or inactive');
       }
 
-      // Mettre à jour le cache
+      // Mettre à jour le cache avec le nouveau TTL
       const cachedSession = await this._getCachedSession(sessionId);
       if (cachedSession) {
         cachedSession.expiresAt = newExpiresAt.toISOString();
-        await this._cacheSession(sessionId, cachedSession);
+        const remainingSeconds = Math.floor(parseFloat(result.rows[0].seconds_remaining));
+        await this._cacheSession(sessionId, cachedSession, remainingSeconds);
       }
 
-      logger.info('Session refreshed', { sessionId });
+      logger.info('Session refreshed', { sessionId, newExpiresAt });
 
       return {
         sessionId: result.rows[0].session_id,
@@ -199,8 +208,6 @@ class SessionService {
 
   /**
    * Termine une session
-   * @param {string} sessionId - ID de session
-   * @returns {Promise<void>}
    */
   async endSession(sessionId) {
     try {
@@ -209,9 +216,7 @@ class SessionService {
         [sessionId]
       );
 
-      // Supprimer du cache
       await redisClient.del(`session:${sessionId}`);
-
       logger.info('Session ended', { sessionId });
 
     } catch (error) {
@@ -222,9 +227,6 @@ class SessionService {
 
   /**
    * Termine toutes les sessions d'un utilisateur
-   * @param {number} userId - ID utilisateur
-   * @param {string} exceptSessionId - Session à ne pas terminer (optionnel)
-   * @returns {Promise<number>} Nombre de sessions terminées
    */
   async endAllUserSessions(userId, exceptSessionId = null) {
     try {
@@ -265,16 +267,17 @@ class SessionService {
 
   /**
    * Récupère toutes les sessions actives d'un utilisateur
-   * @param {number} userId - ID utilisateur
-   * @returns {Promise<Array>} Liste des sessions
    */
   async getUserSessions(userId) {
     try {
       const result = await pool.query(
         `SELECT session_id, ip_address, user_agent, country, city,
-                created_at, last_activity, expires_at, is_suspicious
+                created_at, last_activity, expires_at, is_suspicious,
+                EXTRACT(EPOCH FROM (expires_at - CURRENT_TIMESTAMP)) as seconds_remaining
          FROM sessions 
-         WHERE user_id = $1 AND is_active = true
+         WHERE user_id = $1 
+         AND is_active = true 
+         AND expires_at > CURRENT_TIMESTAMP
          ORDER BY last_activity DESC`,
         [userId]
       );
@@ -290,7 +293,8 @@ class SessionService {
         createdAt: session.created_at,
         lastActivity: session.last_activity,
         expiresAt: session.expires_at,
-        isSuspicious: session.is_suspicious
+        isSuspicious: session.is_suspicious,
+        isExpiringSoon: parseFloat(session.seconds_remaining) < 3600 // < 1h
       }));
 
     } catch (error) {
@@ -301,9 +305,6 @@ class SessionService {
 
   /**
    * Marque une session comme suspecte
-   * @param {string} sessionId - ID de session
-   * @param {string} reason - Raison de suspicion
-   * @returns {Promise<void>}
    */
   async markSessionSuspicious(sessionId, reason) {
     try {
@@ -327,7 +328,6 @@ class SessionService {
 
   /**
    * Nettoie les sessions expirées
-   * @returns {Promise<number>} Nombre de sessions nettoyées
    */
   async cleanupExpiredSessions() {
     try {
@@ -349,9 +349,6 @@ class SessionService {
 
   /**
    * Vérifie si l'IP a changé pour une session
-   * @param {string} sessionId - ID de session
-   * @param {string} currentIp - IP actuelle
-   * @returns {Promise<boolean>} True si l'IP a changé
    */
   async checkIpChange(sessionId, currentIp) {
     try {
@@ -396,11 +393,13 @@ class SessionService {
   /**
    * Met en cache une session dans Redis
    * @private
+   * @param {string} sessionId - ID de session
+   * @param {Object} sessionData - Données à cacher
+   * @param {number} ttl - Time to live en secondes (défaut 24h)
    */
-  async _cacheSession(sessionId, sessionData) {
+  async _cacheSession(sessionId, sessionData, ttl = 86400) {
     const key = `session:${sessionId}`;
-    // Expiration de 30 minutes en cache
-    await redisClient.setEx(key, 1800, JSON.stringify(sessionData));
+    await redisClient.setEx(key, ttl, JSON.stringify(sessionData));
   }
 
   /**

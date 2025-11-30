@@ -1,5 +1,5 @@
 /**
- * Service d'authentification - COMPLETE FIXED VERSION
+ * Service d'authentification - FIXED VERSION
  * @module services/auth.service
  */
 
@@ -18,7 +18,6 @@ class AuthService {
     const { email, username, password, firstName, lastName, phoneNumber, dateOfBirth } = userData;
 
     try {
-      // Vérifier si l'email existe déjà
       const emailCheck = await pool.query(
         'SELECT id FROM users WHERE email = $1',
         [email]
@@ -28,7 +27,6 @@ class AuthService {
         throw new Error('Email already exists');
       }
 
-      // Vérifier si le username existe déjà
       const usernameCheck = await pool.query(
         'SELECT id FROM users WHERE username = $1',
         [username]
@@ -38,11 +36,9 @@ class AuthService {
         throw new Error('Username already exists');
       }
 
-      // Hasher le mot de passe
       const saltRounds = parseInt(process.env.BCRYPT_ROUNDS) || 12;
       const passwordHash = await bcrypt.hash(password, saltRounds);
 
-      // Créer l'utilisateur
       const result = await pool.query(
         `INSERT INTO users (
           email, username, password_hash, first_name, last_name, 
@@ -79,7 +75,6 @@ class AuthService {
    */
   async login(emailOrUsername, password, ipAddress = '0.0.0.0') {
     try {
-      // Rechercher l'utilisateur
       const result = await pool.query(
         `SELECT id, email, username, password_hash, first_name, last_name, 
                 account_status, failed_login_attempts, account_locked_until, mfa_enabled, role
@@ -100,12 +95,10 @@ class AuthService {
         throw new Error('Account is locked. Please try again later.');
       }
 
-      // Vérifier si le compte est actif
       if (user.account_status !== 'active') {
         throw new Error('Account is not active');
       }
 
-      // Vérifier le mot de passe
       const isPasswordValid = await bcrypt.compare(password, user.password_hash);
 
       if (!isPasswordValid) {
@@ -114,24 +107,21 @@ class AuthService {
         throw new Error('Invalid credentials');
       }
 
-      // Réinitialiser les tentatives échouées
       await this._resetFailedAttempts(user.id);
-
-      // Invalider toutes les anciennes sessions/tokens
       await this._invalidateOldUserTokens(user.id);
 
-      // Générer de NOUVEAUX tokens
+      // ✅ FIX: Générer tokens avec expiration cohérente
       const accessToken = this.generateJWT(user);
       const refreshToken = this.generateRefreshToken(user);
 
-      // Stocker le nouveau refresh token dans Redis
+      // ✅ FIX: Stocker refresh token avec TTL de 7 jours
       await redisClient.setEx(
         `refresh:${user.id}`,
-        7 * 24 * 60 * 60, // 7 jours
+        7 * 24 * 60 * 60, // 7 jours en secondes
         refreshToken
       );
 
-      // Mettre à jour la dernière connexion
+      // Mettre à jour la dernière connexion avec timezone UTC
       await pool.query(
         'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1',
         [user.id]
@@ -165,18 +155,18 @@ class AuthService {
 
   /**
    * Génère un access token JWT
+   * ✅ FIX: Expiration 1 jour (cohérent avec session)
    */
   generateJWT(user) {
     const payload = {
       userId: user.id,
       email: user.email,
       username: user.username,
-      role: user.role || 'user',
-      // Don't manually set iat - jwt.sign does it automatically
+      role: user.role || 'user'
     };
 
     return jwt.sign(payload, jwtConfig.secret, {
-      expiresIn: jwtConfig.expiresIn,
+      expiresIn: '1d', // ✅ 1 jour au lieu de jwtConfig.expiresIn
       issuer: 'securebank-api',
       audience: 'securebank-app'
     });
@@ -184,15 +174,16 @@ class AuthService {
 
   /**
    * Génère un refresh token JWT
+   * ✅ FIX: Expiration 7 jours
    */
   generateRefreshToken(user) {
     const payload = {
       userId: user.id,
-      type: 'refresh',
+      type: 'refresh'
     };
 
     return jwt.sign(payload, jwtConfig.refreshSecret, {
-      expiresIn: jwtConfig.refreshExpiresIn,
+      expiresIn: '7d', // ✅ 7 jours au lieu de jwtConfig.refreshExpiresIn
       issuer: 'securebank-api',
       audience: 'securebank-app'
     });
@@ -203,13 +194,11 @@ class AuthService {
    */
   async verifyJWT(token) {
     try {
-      // Vérifier si le token est en blacklist
       const isBlacklisted = await redisClient.get(`blacklist:${token}`);
       if (isBlacklisted) {
         throw new Error('Token has been revoked');
       }
 
-      // Vérifier le token
       const decoded = jwt.verify(token, jwtConfig.secret, {
         issuer: 'securebank-api',
         audience: 'securebank-app'
@@ -233,7 +222,6 @@ class AuthService {
    */
   async refreshToken(refreshToken) {
     try {
-      // Vérifier le refresh token
       const decoded = jwt.verify(refreshToken, jwtConfig.refreshSecret, {
         issuer: 'securebank-api',
         audience: 'securebank-app'
@@ -243,7 +231,6 @@ class AuthService {
         throw new Error('Invalid refresh token');
       }
 
-      // Vérifier si le refresh token stocké correspond
       const storedToken = await redisClient.get(`refresh:${decoded.userId}`);
       
       if (!storedToken) {
@@ -254,7 +241,6 @@ class AuthService {
         throw new Error('Refresh token mismatch');
       }
 
-      // Récupérer l'utilisateur
       const result = await pool.query(
         'SELECT id, email, username, account_status, role FROM users WHERE id = $1',
         [decoded.userId]
@@ -270,9 +256,21 @@ class AuthService {
         throw new Error('Account is not active');
       }
 
-      // Générer de NOUVEAUX tokens (rotation)
+      // ✅ FIX: Rotation des tokens
       const newAccessToken = this.generateJWT(user);
       const newRefreshToken = this.generateRefreshToken(user);
+
+      // ✅ FIX: Blacklister l'ancien refresh token avec bon TTL
+      const tokenPayload = jwt.decode(refreshToken);
+      const expiresIn = tokenPayload.exp - Math.floor(Date.now() / 1000);
+      
+      if (expiresIn > 0) {
+        await redisClient.setEx(
+          `blacklist:${refreshToken}`,
+          expiresIn, // ✅ TTL en secondes (pas "7d")
+          'revoked'
+        );
+      }
 
       // Mettre à jour le refresh token dans Redis
       await redisClient.setEx(
@@ -299,7 +297,6 @@ class AuthService {
    */
   async logout(token) {
     try {
-      // Décoder le token pour obtenir l'expiration
       const decoded = jwt.decode(token);
       
       if (!decoded || !decoded.exp) {
@@ -308,12 +305,10 @@ class AuthService {
 
       const expiresIn = decoded.exp - Math.floor(Date.now() / 1000);
 
-      // Blacklister l'access token
       if (expiresIn > 0) {
         await this._blacklistToken(token, expiresIn);
       }
 
-      // Supprimer aussi le refresh token
       await redisClient.del(`refresh:${decoded.userId}`);
       await redisClient.del(`session:${decoded.userId}`);
 
@@ -331,16 +326,12 @@ class AuthService {
    */
   async _invalidateOldUserTokens(userId) {
     try {
-      // Supprimer l'ancien refresh token
       await redisClient.del(`refresh:${userId}`);
-      
-      // Supprimer toutes les sessions actives de l'utilisateur
       await redisClient.del(`session:${userId}`);
       
       logger.info('Old tokens invalidated for user', { userId });
     } catch (error) {
       logger.error('Error invalidating old tokens', { error: error.message, userId });
-      // Ne pas throw - ce n'est pas critique
     }
   }
 

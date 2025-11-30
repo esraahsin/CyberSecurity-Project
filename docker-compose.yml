@@ -87,12 +87,14 @@ services:
     networks:
       - securebank-network
     restart: unless-stopped
-
+environment:
+  - TZ=Africa/Tunis
 volumes:
   postgres_data:
     driver: local
   redis_data:
     driver: local
+ 
 
 networks:
   securebank-network:
