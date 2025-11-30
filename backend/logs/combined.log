@@ -548,3 +548,17 @@
 {"email":"sara@example.com","ipAddress":"::1","level":"info","message":"User logged in successfully","service":"cybersecurity-api","timestamp":"2025-11-30 21:50:12","userId":9}
 {"expiresAt":"2025-12-01T20:50:12.969Z","ipAddress":"::1","level":"info","message":"Session created","service":"cybersecurity-api","sessionId":"2ea1846227071a56358bf311539fdee5577503a17c41da04ba6404c9c31d6c34","timestamp":"2025-11-30 21:50:12","userId":9}
 {"level":"info","message":"::1 - - [30/Nov/2025:20:50:12 +0000] \"POST /api/auth/login HTTP/1.1\" 200 847 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 21:50:12"}
+{"environment":"development","level":"info","message":"SecureBank API server started","nodeVersion":"v20.18.0","port":"3000","service":"cybersecurity-api","timestamp":"2025-11-30 20:52:33"}
+{"level":"info","message":"Old tokens invalidated for user","service":"cybersecurity-api","timestamp":"2025-11-30 20:53:15","userId":9}
+{"email":"sara@example.com","ipAddress":"::1","level":"info","message":"User logged in successfully","service":"cybersecurity-api","timestamp":"2025-11-30 20:53:15","userId":9}
+{"expiresAt":"2025-12-01T20:53:15.055Z","ipAddress":"::1","level":"info","message":"Session created","service":"cybersecurity-api","sessionId":"a875427be6b7e085c96f99814db546546a09150d76f99ceeff5d5e1991ca82ff","timestamp":"2025-11-30 20:53:15","userId":9}
+{"level":"info","message":"::1 - - [30/Nov/2025:20:53:15 +0000] \"POST /api/auth/login HTTP/1.1\" 200 847 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 20:53:15"}
+{"level":"info","message":"::1 - - [30/Nov/2025:20:53:57 +0000] \"GET /api/accounts HTTP/1.1\" 200 49 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 20:53:57"}
+{"accountId":6,"accountNumber":"BNK032479602386","level":"info","message":"Account created","service":"cybersecurity-api","timestamp":"2025-11-30 20:57:48","userId":9}
+{"level":"info","message":"::1 - - [30/Nov/2025:20:57:48 +0000] \"POST /api/accounts HTTP/1.1\" 201 251 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 20:57:48"}
+{"level":"info","message":"::1 - - [30/Nov/2025:20:57:59 +0000] \"GET /api/accounts HTTP/1.1\" 200 315 \"-\" \"PostmanRuntime/7.50.0\"","service":"cybersecurity-api","timestamp":"2025-11-30 20:57:59"}
+{"environment":"development","level":"info","message":"SecureBank API server started","nodeVersion":"v20.18.0","port":"3000","service":"cybersecurity-api","timestamp":"2025-11-30 20:59:41"}
+{"environment":"development","level":"info","message":"SecureBank API server started","nodeVersion":"v20.18.0","port":"3000","service":"cybersecurity-api","timestamp":"2025-11-30 21:00:31"}
+{"environment":"development","level":"info","message":"SecureBank API server started","nodeVersion":"v20.18.0","port":"3000","service":"cybersecurity-api","timestamp":"2025-11-30 21:01:07"}
+{"environment":"development","level":"info","message":"SecureBank API server started","nodeVersion":"v20.18.0","port":"3000","service":"cybersecurity-api","timestamp":"2025-11-30 21:01:22"}
+{"environment":"development","level":"info","message":"SecureBank API server started","nodeVersion":"v20.18.0","port":"3000","service":"cybersecurity-api","timestamp":"2025-11-30 21:01:54"}

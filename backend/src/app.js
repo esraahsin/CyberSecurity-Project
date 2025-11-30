@@ -14,6 +14,8 @@ const logger = require('./utils/logger');
 const authRoutes = require('./routes/auth.routes');
 const accountRoutes = require('./routes/account.routes');
 
+const userRoutes = require('./routes/user.routes');
+const transactionRoutes = require('./routes/transaction.routes');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -49,8 +51,8 @@ app.get('/health', (req, res) => {
 // ============================================
 app.use('/api/auth', authRoutes);
 app.use('/api/accounts', accountRoutes);
-// app.use('/api/transactions', transactionRoutes); // À venir
-// app.use('/api/users', userRoutes); // À venir
+app.use('/api/transactions', transactionRoutes); // À venir
+app.use('/api/users', userRoutes); // À venir
 
 // Basic test endpoint
 app.get('/api/test', (req, res) => {
