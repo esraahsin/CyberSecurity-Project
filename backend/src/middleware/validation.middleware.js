@@ -191,7 +191,7 @@ const validateTransfer = [
   body('toAccountNumber')
     .notEmpty()
     .withMessage('Destination account is required')
-    .matches(/^BNK[0-9]{16}$/)
+.matches(/^BNK[0-9]{12,16}$/)  // Accepte de 12 à 16 chiffres
     .withMessage('Invalid account number format'),
   
   body('amount')
@@ -234,7 +234,7 @@ const validateBeneficiary = [
   body('accountNumber')
     .notEmpty()
     .withMessage('Account number is required')
-    .matches(/^BNK[0-9]{16}$/)
+.matches(/^BNK[0-9]{12,16}$/)  // Accepte de 12 à 16 chiffres
     .withMessage('Invalid account number format'),
   
   body('bankName')
