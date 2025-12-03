@@ -1,44 +1,33 @@
-﻿# Backend Dockerfile
-# Use Node.js 18 Alpine as base image
-FROM node:18-alpine AS builder
+﻿FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
 COPY package*.json ./
-
-# Install dependencies
 RUN npm ci --only=production && \
     npm cache clean --force
 
-# Production stage
 FROM node:18-alpine
+
+# Install dumb-init
+RUN apk add --no-cache dumb-init
 
 WORKDIR /app
 
-# Install dumb-init for signal handling
-RUN apk add --no-cache dumb-init
-
-# Copy node_modules from builder
 COPY --from=builder /app/node_modules ./node_modules
-
-# Copy application files
 COPY package*.json ./
 COPY src ./src
 
-# Create non-root user for security
+# Create logs directory BEFORE switching to non-root user
+RUN mkdir -p logs && chmod 777 logs
+
+# Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+    adduser -S nodejs -u 1001 && \
+    chown -R nodejs:nodejs /app
 
 USER nodejs
 
-# Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
-
-# Start application
-ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "src/app.js"]
+# Use npm start instead of hardcoding the entry point
+CMD ["npm", "start"]

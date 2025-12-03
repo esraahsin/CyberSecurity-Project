@@ -51,6 +51,9 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://bankadmin:${DB_PASSWORD}@postgres:5432/securebank
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       ENCRYPTION_IV: ${ENCRYPTION_IV}
@@ -64,7 +67,7 @@ services:
     volumes:
       - ./backend/src:/app/src
       - ./backend/tests:/app/tests
-      - ./backend/database:/app/database 
+      - ./backend/database:/app/database
     networks:
       - securebank-network
     restart: unless-stopped
@@ -72,29 +75,30 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev  # Assure-toi d’avoir un Dockerfile.dev
     container_name: securebank-frontend
     depends_on:
       - app
     environment:
-      REACT_APP_API_URL: http://localhost:3000/api
+      REACT_APP_API_URL: http://app:3000/api   # Utilise le nom du service backend dans Docker
       REACT_APP_ENV: ${NODE_ENV}
+      TZ: Africa/Tunis
     ports:
-      - "3001:3000"
+      - "3001:3000"  # Accès depuis localhost:3001
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
+      - /app/node_modules
+    command: npm start
     networks:
       - securebank-network
     restart: unless-stopped
-environment:
-  - TZ=Africa/Tunis
+
 volumes:
   postgres_data:
     driver: local
   redis_data:
     driver: local
- 
 
 networks:
   securebank-network:

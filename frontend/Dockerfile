@@ -1,11 +1,10 @@
-﻿FROM nginx:alpine
+﻿FROM node:18-alpine
 
-COPY conf.d/default.conf /etc/nginx/conf.d/default.conf
-COPY public /usr/share/nginx/html
+WORKDIR /app
 
-EXPOSE 3000
+COPY package*.json ./
+RUN npm install
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost:3000/ || exit 1
+COPY . .
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["npm", "start"]
