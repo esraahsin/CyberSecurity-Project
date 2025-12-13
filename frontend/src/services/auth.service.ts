@@ -8,6 +8,16 @@ interface LoginRequest {
   password: string;
   rememberMe?: boolean;
 }
+interface EnableMFAResponse {
+  secret: string;
+  instructions: string;
+}
+
+interface DisableMFARequest {
+  password: string;
+  code: string;
+}
+
 
 interface RegisterRequest {
   email: string;
@@ -100,7 +110,25 @@ class AuthService {
   async terminateAllSessions(): Promise<ApiResponse<void>> {
     return api.delete('/auth/sessions');
   }
+// Enable MFA
+  async enableMFA(): Promise<ApiResponse<EnableMFAResponse>> {
+    return api.post('/auth/mfa/enable');
+  }
 
+  // Verify MFA setup code
+  async verifyMFACode(code: string): Promise<ApiResponse<void>> {
+    return api.post('/auth/mfa/verify-setup', { code });
+  }
+
+  // Disable MFA
+  async disableMFA(data: DisableMFARequest): Promise<ApiResponse<void>> {
+    return api.post('/auth/mfa/disable', data);
+  }
+
+  // Get MFA Status
+  async getMFAStatus(): Promise<ApiResponse<{ mfaEnabled: boolean; setupPending: boolean }>> {
+    return api.get('/auth/mfa/status');
+  }
   // Vérifier si l'utilisateur est connecté
   isAuthenticated(): boolean {
     const token = localStorage.getItem('accessToken');

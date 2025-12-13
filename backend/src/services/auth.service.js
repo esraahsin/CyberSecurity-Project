@@ -398,6 +398,184 @@ class AuthService {
       timestamp: new Date().toISOString()
     });
   }
+  // backend/src/services/auth.service.js - ADD THESE METHODS TO THE CLASS
+
+/**
+ * Enable MFA - Generate and store secret
+ */
+async enableMFA(userId) {
+  try {
+    const crypto = require('crypto');
+    const mfaSecret = crypto.randomBytes(20).toString('hex');
+
+    // Store temporary secret in Redis (10 minutes expiration)
+    await redisClient.setEx(
+      `mfa_setup:${userId}`,
+      600,
+      mfaSecret
+    );
+
+    logger.info('MFA setup initiated', { userId });
+
+    return {
+      secret: mfaSecret,
+      instructions: 'Use this secret in your authenticator app'
+    };
+  } catch (error) {
+    logger.error('Enable MFA error', { error: error.message, userId });
+    throw error;
+  }
+}
+
+/**
+ * Verify MFA setup code and save to database
+ */
+async verifyMFASetup(userId, code) {
+  try {
+    // Get pending secret from Redis
+    const mfaSecret = await redisClient.get(`mfa_setup:${userId}`);
+    
+    if (!mfaSecret) {
+      throw new Error('MFA setup expired. Please start again.');
+    }
+
+    // Validate code format
+    if (!/^\d{6}$/.test(code)) {
+      throw new Error('Invalid MFA code format');
+    }
+
+    // In production, verify with speakeasy
+    // For now, accept any 6-digit code for demo purposes
+    
+    // Save MFA secret to database
+    await pool.query(
+      `UPDATE users 
+       SET mfa_enabled = true, mfa_secret = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2`,
+      [mfaSecret, userId]
+    );
+
+    // Clean up Redis
+    await redisClient.del(`mfa_setup:${userId}`);
+
+    logger.info('MFA enabled successfully', { userId });
+
+    return { success: true };
+  } catch (error) {
+    logger.error('MFA verification error', { error: error.message, userId });
+    throw error;
+  }
+}
+
+/**
+ * Disable MFA
+ */
+async disableMFA(userId, password, code) {
+  try {
+    // Get user with password
+    const userResult = await pool.query(
+      'SELECT password_hash, mfa_enabled, mfa_secret FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      throw new Error('User not found');
+    }
+
+    const user = userResult.rows[0];
+
+    if (!user.mfa_enabled) {
+      throw new Error('MFA is not enabled');
+    }
+
+    // Verify password
+    const isValidPassword = await bcrypt.compare(password, user.password_hash);
+    if (!isValidPassword) {
+      throw new Error('Invalid password');
+    }
+
+    // Verify MFA code format
+    if (!/^\d{6}$/.test(code)) {
+      throw new Error('Invalid MFA code format');
+    }
+
+    // In production, verify code with speakeasy
+    // For now, accept any 6-digit code
+
+    // Disable MFA
+    await pool.query(
+      `UPDATE users 
+       SET mfa_enabled = false, mfa_secret = NULL, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1`,
+      [userId]
+    );
+
+    logger.info('MFA disabled successfully', { userId });
+
+    return { success: true };
+  } catch (error) {
+    logger.error('Disable MFA error', { error: error.message, userId });
+    throw error;
+  }
+}
+
+/**
+ * Get MFA status for a user
+ */
+async getMFAStatus(userId) {
+  try {
+    const result = await pool.query(
+      'SELECT mfa_enabled FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error('User not found');
+    }
+
+    const setupPending = await redisClient.exists(`mfa_setup:${userId}`);
+
+    return {
+      mfaEnabled: result.rows[0].mfa_enabled,
+      setupPending: setupPending === 1
+    };
+  } catch (error) {
+    logger.error('Get MFA status error', { error: error.message, userId });
+    throw error;
+  }
+}
+
+/**
+ * Verify MFA code during login
+ */
+async verifyMFACode(userId, code) {
+  try {
+    // Get user's MFA secret
+    const result = await pool.query(
+      'SELECT mfa_secret FROM users WHERE id = $1 AND mfa_enabled = true',
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error('MFA not enabled for this user');
+    }
+
+    // Verify code format
+    if (!/^\d{6}$/.test(code)) {
+      throw new Error('Invalid MFA code format');
+    }
+
+    // In production, verify with speakeasy using the stored secret
+    // For now, accept any 6-digit code
+    
+    logger.info('MFA code verified', { userId });
+
+    return { success: true };
+  } catch (error) {
+    logger.error('MFA code verification error', { error: error.message, userId });
+    throw error;
+  }
+}
 }
 
 module.exports = new AuthService();

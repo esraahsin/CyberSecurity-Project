@@ -8,6 +8,9 @@ import { Label } from '../components/ui/label';
 import { User, Lock, Shield, LogOut } from 'lucide-react';
 import authService from '../services/auth.service';
 
+import MFASetupModal from '../components/modals/MFASetupModal';
+import MFADisableModal from '../components/modals/MFADisableModal';
+
 export default function ProfilePage() {
   const { user, updateUser, logout } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -132,6 +135,58 @@ export default function ProfilePage() {
       logout();
     } catch (err: any) {
       alert(err.message || 'Failed to logout from all devices');
+    }
+  };
+   const [mfaSetupModal, setMfaSetupModal] = useState(false);
+  const [mfaDisableModal, setMfaDisableModal] = useState(false);
+  const [mfaSecret, setMfaSecret] = useState('');
+
+  // Enable MFA handler
+  const handleEnableMFA = async () => {
+    try {
+      setLoading(true);
+      const response = await authService.enableMFA();
+      
+      if (response.success && response.data) {
+        setMfaSecret(response.data.secret);
+        setMfaSetupModal(true);
+      } else {
+        setError(response.error || 'Failed to setup MFA');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to setup MFA');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Verify MFA code handler
+  const handleVerifyMFA = async (code: string) => {
+    const response = await authService.verifyMFACode(code);
+    
+    if (response.success) {
+      setSuccess('Two-factor authentication enabled successfully!');
+      // Update user state
+      if (user) {
+        updateUser({ ...user, mfaEnabled: true });
+      }
+    } else {
+      throw new Error(response.error || 'Verification failed');
+    }
+  };
+
+  // Disable MFA handler
+  const handleDisableMFA = async (password: string, code: string) => {
+    const response = await authService.disableMFA({ password, code });
+    
+    if (response.success) {
+      setSuccess('Two-factor authentication disabled successfully!');
+      // Update user state
+      if (user) {
+        updateUser({ ...user, mfaEnabled: false });
+      }
+    } else {
+      throw new Error(response.error || 'Failed to disable MFA');
     }
   };
 
@@ -316,6 +371,7 @@ export default function ProfilePage() {
       </Card>
 
       {/* Account Actions */}
+       {/* Account Actions */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -328,10 +384,16 @@ export default function ProfilePage() {
             <div>
               <p className="font-medium text-gray-900">Multi-Factor Authentication</p>
               <p className="text-sm text-gray-600">
-                {user?.mfaEnabled ? 'Enabled' : 'Add an extra layer of security'}
+                {user?.mfaEnabled 
+                  ? 'Extra security is enabled' 
+                  : 'Add an extra layer of security'}
               </p>
             </div>
-            <Button variant="outline">
+            <Button 
+              variant="outline"
+              onClick={user?.mfaEnabled ? () => setMfaDisableModal(true) : handleEnableMFA}
+              disabled={loading}
+            >
               {user?.mfaEnabled ? 'Disable' : 'Enable'}
             </Button>
           </div>
@@ -358,6 +420,19 @@ export default function ProfilePage() {
           </div>
         </CardContent>
       </Card>
+
+<MFASetupModal
+        isOpen={mfaSetupModal}
+        onClose={() => setMfaSetupModal(false)}
+        secret={mfaSecret}
+        onVerify={handleVerifyMFA}
+      />
+
+      <MFADisableModal
+        isOpen={mfaDisableModal}
+        onClose={() => setMfaDisableModal(false)}
+        onDisable={handleDisableMFA}
+      />
     </div>
-  );
+      );
 }
