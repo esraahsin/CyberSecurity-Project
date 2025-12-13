@@ -1,5 +1,5 @@
 /**
- * Routes d'authentification
+ * Routes d'authentification avec MFA email
  * @module routes/auth.routes
  */
 
@@ -52,6 +52,27 @@ router.post(
   authRateLimiter(),
   validateLogin,
   AuthController.login
+);
+
+/**
+ * POST /api/auth/verify-mfa
+ * Vérifier le code MFA après connexion
+ */
+router.post(
+  '/verify-mfa',
+  authRateLimiter(),
+  validateMFACode,
+  AuthController.verifyMFA
+);
+
+/**
+ * POST /api/auth/resend-mfa
+ * Renvoyer un code MFA
+ */
+router.post(
+  '/resend-mfa',
+  authRateLimiter(),
+  AuthController.resendMFA
 );
 
 /**
@@ -159,5 +180,64 @@ router.delete(
   sensitiveOperationRateLimiter(),
   AuthController.terminateAllSessions
 );
+/**
+ * Add these routes to auth.routes.js
+ * Place them in the "Routes protégées" section after the sessions routes
+ */
 
+// ============================================
+// Routes MFA (authentification requise)
+// ============================================
+
+/**
+ * POST /api/auth/mfa/verify
+ * Vérifie le code MFA après connexion
+ */
+router.post(
+  '/mfa/verify',
+  validateMFACode,
+  AuthController.verifyMFA
+);
+
+/**
+ * POST /api/auth/mfa/resend
+ * Renvoie le code MFA
+ */
+router.post(
+  '/mfa/resend',
+  authRateLimiter(),
+  AuthController.resendMFA
+);
+
+/**
+ * GET /api/auth/mfa/status
+ * Récupère le statut MFA
+ */
+router.get(
+  '/mfa/status',
+  authenticateToken,
+  AuthController.getMFAStatus
+);
+
+/**
+ * POST /api/auth/mfa/enable
+ * Active l'authentification à deux facteurs
+ */
+router.post(
+  '/mfa/enable',
+  authenticateToken,
+  sensitiveOperationRateLimiter(),
+  AuthController.enableMFA
+);
+
+/**
+ * POST /api/auth/mfa/disable
+ * Désactive l'authentification à deux facteurs
+ */
+router.post(
+  '/mfa/disable',
+  authenticateToken,
+  sensitiveOperationRateLimiter(),
+  AuthController.disableMFA
+);
 module.exports = router;
