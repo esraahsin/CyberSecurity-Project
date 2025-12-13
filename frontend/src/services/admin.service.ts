@@ -68,9 +68,10 @@ class AdminService {
   }
 
   // Users Management
-  async listUsers(params?: PaginationParams & { status?: string; role?: string }): Promise<ApiResponse<PaginatedResponse<User>>> {
-    return api.get('/users', params);
-  }
+async listUsers(params?: PaginationParams & { status?: string; role?: string }): Promise<ApiResponse<PaginatedResponse<User>>> {
+  return api.get('/admin/users', params); // ✅ CORRECT
+}
+
 
   async getUserById(userId: number): Promise<ApiResponse<{ user: User }>> {
     return api.get(`/users/${userId}`);

@@ -245,6 +245,72 @@ router.get('/reports/daily', async (req, res, next) => {
     next(error);
   }
 });
+// GET /api/admin/users - List all users (ADMIN)
+router.get('/users', validatePagination, async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20, status, role } = req.query;
+    const offset = (page - 1) * limit;
+
+    let query = `
+      SELECT 
+        id,
+        email,
+        username,
+        first_name,
+        last_name,
+        role,
+        account_status,
+        created_at,
+        last_login
+      FROM users
+      WHERE 1 = 1
+    `;
+
+    const params = [];
+    let paramIndex = 1;
+
+    if (status) {
+      query += ` AND account_status = $${paramIndex}`;
+      params.push(status);
+      paramIndex++;
+    }
+
+    if (role) {
+      query += ` AND role = $${paramIndex}`;
+      params.push(role);
+      paramIndex++;
+    }
+
+    query += `
+      ORDER BY created_at DESC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `;
+
+    params.push(limit, offset);
+
+    const usersResult = await pool.query(query, params);
+
+    const countResult = await pool.query(`
+      SELECT COUNT(*) FROM users
+    `);
+
+    res.json({
+      success: true,
+      data: {
+        users: usersResult.rows,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: parseInt(countResult.rows[0].count),
+          totalPages: Math.ceil(countResult.rows[0].count / limit)
+        }
+      }
+    });
+  } catch (error) {
+    logger.logError(error, { context: 'Admin Users List' });
+    next(error);
+  }
+});
 
 // GET /api/admin/accounts - List all accounts
 router.get('/accounts', validatePagination, async (req, res, next) => {

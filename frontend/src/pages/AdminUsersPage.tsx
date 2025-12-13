@@ -39,17 +39,21 @@ export default function AdminUsersPage() {
       });
       
       if (response.success && response.data) {
-        setUsers(response.data.data);
-        setTotalPages(response.data.pagination.totalPages);
-      } else {
-        setError(response.error || 'Failed to load users');
-      }
+  setUsers(response.data.data || []);
+  setTotalPages(response.data.pagination?.totalPages || 1);
+} else {
+  setUsers([]); // ✅ VERY IMPORTANT
+  setError(response.error || 'Failed to load users');
+}
+
+
     } catch (err: any) {
       console.error('Failed to load users:', err);
       setError(err.message || 'Failed to load users');
     } finally {
       setLoading(false);
     }
+
   };
 
   const searchUsers = async () => {
@@ -63,9 +67,12 @@ export default function AdminUsersPage() {
       const response = await adminService.searchUsers(searchQuery, { page, limit: 20 });
       
       if (response.success && response.data) {
-        setUsers(response.data.data);
-        setTotalPages(response.data.pagination.totalPages);
-      }
+  setUsers(response.data.data || []);
+  setTotalPages(response.data.pagination?.totalPages || 1);
+} else {
+  setUsers([]); // ✅ prevent undefined
+}
+
     } catch (err: any) {
       console.error('Search failed:', err);
       setError(err.message || 'Search failed');
@@ -223,7 +230,7 @@ export default function AdminUsersPage() {
       {/* Users Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Users ({users.length})</CardTitle>
+<CardTitle>Users ({users?.length ?? 0})</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
