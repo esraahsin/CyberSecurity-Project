@@ -36,7 +36,7 @@ export default function TransactionsPage() {
       });
       
       if (response.success && response.data) {
-        setTransactions(response.data.data);
+        setTransactions(response.data.data || []);
         setTotalPages(response.data.pagination.totalPages);
       } else {
         setError(response.error || 'Failed to load transactions');
