@@ -1,6 +1,6 @@
 /**
  * Account Controller - Gestion des comptes bancaires
- * @module controllers/AccountController
+ * FIXED VERSION - Handles account creation and admin access
  */
 
 const AccountModel = require('../models/Account.model');
@@ -17,10 +17,8 @@ class AccountController {
     try {
       const userId = req.user.id;
 
-      // Récupérer tous les comptes de l'utilisateur
       const accounts = await AccountModel.findByUserId(userId);
 
-      // Log audit
       await auditService.logAction({
         userId,
         action: 'LIST_ACCOUNTS',
@@ -38,7 +36,7 @@ class AccountController {
             accountNumber: account.account_number,
             accountType: account.account_type,
             currency: account.currency,
-            balance: account.balance / 100, // Convertir centimes en euros
+            balance: account.balance / 100,
             availableBalance: account.available_balance / 100,
             accountStatus: account.account_status,
             dailyTransferLimit: account.daily_transfer_limit / 100,
@@ -61,10 +59,12 @@ class AccountController {
   /**
    * GET /api/accounts/:id
    * Récupère les détails d'un compte spécifique
+   * FIXED: Allow admin to access any account
    */
   async getAccountDetails(req, res, next) {
     try {
       const userId = req.user.id;
+      const userRole = req.user.role;
       const accountId = parseInt(req.params.id);
 
       // Récupérer le compte
@@ -77,8 +77,8 @@ class AccountController {
         });
       }
 
-      // Vérifier que le compte appartient à l'utilisateur
-      if (account.user_id !== userId) {
+      // ✅ FIX: Allow admin to access any account
+      if (account.user_id !== userId && userRole !== 'admin') {
         await auditService.logSecurityEvent({
           userId,
           event: 'UNAUTHORIZED_ACCOUNT_ACCESS',
@@ -134,12 +134,108 @@ class AccountController {
   }
 
   /**
+   * POST /api/accounts
+   * Créer un nouveau compte bancaire
+   * FIXED: Better error handling and validation
+   */
+  async createAccount(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { accountType, currency, initialBalance } = req.body;
+
+      // ✅ FIX: Validate account type
+      const validTypes = ['checking', 'savings', 'business'];
+      if (!accountType) {
+        return res.status(400).json({
+          success: false,
+          error: 'Account type is required'
+        });
+      }
+
+      if (!validTypes.includes(accountType)) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid account type. Must be one of: ${validTypes.join(', ')}`
+        });
+      }
+
+      // ✅ FIX: Validate initial balance
+      const balanceInCents = initialBalance ? Math.round(initialBalance * 100) : 0;
+      
+      if (balanceInCents < 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Initial balance cannot be negative'
+        });
+      }
+
+      // Créer le compte
+      const account = await AccountModel.create({
+        userId,
+        accountType,
+        currency: currency || 'USD',
+        initialBalance: balanceInCents
+      });
+
+      // Log audit
+      await auditService.logAction({
+        userId,
+        action: 'CREATE_ACCOUNT',
+        resourceType: 'account',
+        resourceId: account.id,
+        eventType: 'account_change',
+        severity: 'info',
+        ipAddress: req.ip,
+        newValues: {
+          accountNumber: account.account_number,
+          accountType,
+          currency: currency || 'USD',
+          initialBalance: balanceInCents / 100
+        }
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Account created successfully',
+        data: {
+          id: account.id,
+          accountNumber: account.account_number,
+          accountType: account.account_type,
+          currency: account.currency,
+          balance: account.balance / 100,
+          availableBalance: account.available_balance / 100,
+          accountStatus: account.account_status,
+          createdAt: account.created_at
+        }
+      });
+    } catch (error) {
+      logger.logError(error, { 
+        context: 'Create Account',
+        userId: req.user?.id,
+        body: req.body
+      });
+      
+      // ✅ FIX: Better error messages
+      if (error.message.includes('duplicate') || error.code === '23505') {
+        return res.status(409).json({
+          success: false,
+          error: 'Account number already exists. Please try again.'
+        });
+      }
+      
+      next(error);
+    }
+  }
+
+  /**
    * GET /api/accounts/:id/balance
    * Récupère uniquement le solde d'un compte
+   * FIXED: Allow admin access
    */
   async getBalance(req, res, next) {
     try {
       const userId = req.user.id;
+      const userRole = req.user.role;
       const accountId = parseInt(req.params.id);
 
       const account = await AccountModel.findById(accountId);
@@ -151,8 +247,8 @@ class AccountController {
         });
       }
 
-      // Vérifier la propriété
-      if (account.user_id !== userId) {
+      // ✅ FIX: Allow admin access
+      if (account.user_id !== userId && userRole !== 'admin') {
         return res.status(403).json({
           success: false,
           error: 'Access denied'
@@ -183,10 +279,12 @@ class AccountController {
   /**
    * GET /api/accounts/:id/transactions
    * Liste les transactions d'un compte
+   * FIXED: Allow admin access
    */
   async getAccountTransactions(req, res, next) {
     try {
       const userId = req.user.id;
+      const userRole = req.user.role;
       const accountId = parseInt(req.params.id);
 
       // Vérifier que le compte appartient à l'utilisateur
@@ -199,7 +297,8 @@ class AccountController {
         });
       }
 
-      if (account.user_id !== userId) {
+      // ✅ FIX: Allow admin access
+      if (account.user_id !== userId && userRole !== 'admin') {
         return res.status(403).json({
           success: false,
           error: 'Access denied'
@@ -226,7 +325,7 @@ class AccountController {
         type: tx.transaction_type,
         amount: tx.amount / 100,
         currency: tx.currency,
-        direction: tx.direction, // 'debit' ou 'credit'
+        direction: tx.direction,
         status: tx.status,
         description: tx.description,
         fromAccount: tx.from_account_number,
@@ -259,82 +358,15 @@ class AccountController {
     }
   }
 
-  /**
-   * POST /api/accounts
-   * Créer un nouveau compte bancaire
-   */
-  async createAccount(req, res, next) {
-    try {
-      const userId = req.user.id;
-      const { accountType, currency, initialBalance } = req.body;
-
-      // Valider le type de compte
-      const validTypes = ['checking', 'savings', 'business'];
-      if (!validTypes.includes(accountType)) {
-        return res.status(400).json({
-          success: false,
-          error: `Invalid account type. Must be one of: ${validTypes.join(', ')}`
-        });
-      }
-
-      // Créer le compte
-      const account = await AccountModel.create({
-        userId,
-        accountType,
-        currency: currency || 'USD',
-        initialBalance: initialBalance ? initialBalance * 100 : 0 // Convertir en centimes
-      });
-
-      // Log audit
-      await auditService.logAction({
-        userId,
-        action: 'CREATE_ACCOUNT',
-        resourceType: 'account',
-        resourceId: account.id,
-        eventType: 'data_access',
-        severity: 'info',
-        ipAddress: req.ip,
-        newValues: {
-          accountNumber: account.account_number,
-          accountType,
-          currency
-        }
-      });
-
-      res.status(201).json({
-        success: true,
-        message: 'Account created successfully',
-        data: {
-          id: account.id,
-          accountNumber: account.account_number,
-          accountType: account.account_type,
-          currency: account.currency,
-          balance: account.balance / 100,
-          availableBalance: account.available_balance / 100,
-          accountStatus: account.account_status,
-          createdAt: account.created_at
-        }
-      });
-    } catch (error) {
-      logger.logError(error, { 
-        context: 'Create Account',
-        userId: req.user?.id 
-      });
-      next(error);
-    }
-  }
-
-  /**
-   * PUT /api/accounts/:id/limits
-   * Mettre à jour les limites de transfert
-   */
+  // ... rest of the methods remain the same but add admin check
+  
   async updateLimits(req, res, next) {
     try {
       const userId = req.user.id;
+      const userRole = req.user.role;
       const accountId = parseInt(req.params.id);
       const { dailyLimit, monthlyLimit } = req.body;
 
-      // Vérifier la propriété du compte
       const account = await AccountModel.findById(accountId);
 
       if (!account) {
@@ -344,20 +376,19 @@ class AccountController {
         });
       }
 
-      if (account.user_id !== userId) {
+      // ✅ FIX: Allow admin access
+      if (account.user_id !== userId && userRole !== 'admin') {
         return res.status(403).json({
           success: false,
           error: 'Access denied'
         });
       }
 
-      // Mettre à jour les limites (convertir en centimes)
       const updated = await AccountModel.updateLimits(accountId, {
         dailyLimit: dailyLimit ? dailyLimit * 100 : null,
         monthlyLimit: monthlyLimit ? monthlyLimit * 100 : null
       });
 
-      // Log audit
       await auditService.logAction({
         userId,
         action: 'UPDATE_ACCOUNT_LIMITS',
@@ -388,17 +419,13 @@ class AccountController {
     }
   }
 
-  /**
-   * PUT /api/accounts/:id/status
-   * Changer le statut d'un compte (freeze/unfreeze)
-   */
   async updateStatus(req, res, next) {
     try {
       const userId = req.user.id;
+      const userRole = req.user.role;
       const accountId = parseInt(req.params.id);
       const { status } = req.body;
 
-      // Valider le statut
       const validStatuses = ['active', 'frozen'];
       if (!validStatuses.includes(status)) {
         return res.status(400).json({
@@ -407,7 +434,6 @@ class AccountController {
         });
       }
 
-      // Vérifier la propriété
       const account = await AccountModel.findById(accountId);
 
       if (!account) {
@@ -417,17 +443,16 @@ class AccountController {
         });
       }
 
-      if (account.user_id !== userId) {
+      // ✅ FIX: Allow admin access
+      if (account.user_id !== userId && userRole !== 'admin') {
         return res.status(403).json({
           success: false,
           error: 'Access denied'
         });
       }
 
-      // Mettre à jour le statut
       const updated = await AccountModel.updateStatus(accountId, status);
 
-      // Log audit
       await auditService.logSecurityEvent({
         userId,
         event: status === 'frozen' ? 'ACCOUNT_FROZEN' : 'ACCOUNT_UNFROZEN',
@@ -460,16 +485,12 @@ class AccountController {
     }
   }
 
-  /**
-   * DELETE /api/accounts/:id
-   * Fermer un compte (soft delete)
-   */
   async closeAccount(req, res, next) {
     try {
       const userId = req.user.id;
+      const userRole = req.user.role;
       const accountId = parseInt(req.params.id);
 
-      // Vérifier la propriété
       const account = await AccountModel.findById(accountId);
 
       if (!account) {
@@ -479,14 +500,14 @@ class AccountController {
         });
       }
 
-      if (account.user_id !== userId) {
+      // ✅ FIX: Allow admin access
+      if (account.user_id !== userId && userRole !== 'admin') {
         return res.status(403).json({
           success: false,
           error: 'Access denied'
         });
       }
 
-      // Vérifier que le solde est zéro
       if (account.balance !== 0) {
         return res.status(400).json({
           success: false,
@@ -495,10 +516,8 @@ class AccountController {
         });
       }
 
-      // Fermer le compte
       const closed = await AccountModel.close(accountId);
 
-      // Log audit
       await auditService.logSecurityEvent({
         userId,
         event: 'ACCOUNT_CLOSED',
@@ -529,17 +548,13 @@ class AccountController {
     }
   }
 
-  /**
-   * GET /api/accounts/:id/statement
-   * Générer un relevé de compte
-   */
   async getStatement(req, res, next) {
     try {
       const userId = req.user.id;
+      const userRole = req.user.role;
       const accountId = parseInt(req.params.id);
       const { startDate, endDate } = req.query;
 
-      // Vérifier la propriété
       const account = await AccountModel.findById(accountId);
 
       if (!account) {
@@ -549,21 +564,20 @@ class AccountController {
         });
       }
 
-      if (account.user_id !== userId) {
+      // ✅ FIX: Allow admin access
+      if (account.user_id !== userId && userRole !== 'admin') {
         return res.status(403).json({
           success: false,
           error: 'Access denied'
         });
       }
 
-      // Récupérer les transactions pour la période
       const transactions = await TransactionModel.findByAccountId(accountId, {
         startDate,
         endDate,
-        limit: 1000 // Limite élevée pour le relevé
+        limit: 1000
       });
 
-      // Calculer les totaux
       const totals = transactions.transactions.reduce((acc, tx) => {
         if (tx.direction === 'debit') {
           acc.totalDebits += tx.amount;
@@ -592,7 +606,7 @@ class AccountController {
             startDate: startDate || transactions.transactions[0]?.created_at,
             endDate: endDate || new Date().toISOString()
           },
-          openingBalance: account.balance / 100, // Simplification
+          openingBalance: account.balance / 100,
           closingBalance: account.balance / 100,
           transactions: transactions.transactions.map(tx => ({
             date: tx.created_at,
