@@ -44,13 +44,16 @@ const DashboardPage: React.FC = () => {
 
       // Charger les transactions récentes
       const transactionsRes = await transactionService.listTransactions({ limit: 5 });
-      if (transactionsRes.success && transactionsRes.data) {
-        setRecentTransactions(transactionsRes.data.data);
-        setStats(prev => ({
-          ...prev,
-          recentTransactions: transactionsRes.data!.pagination.total,
-        }));
-      }
+     if (transactionsRes.success && transactionsRes.data) {
+  const txs = transactionsRes.data.transactions || [];
+
+  setRecentTransactions(txs);
+
+  setStats(prev => ({
+    ...prev,
+    recentTransactions: txs.length, // ✅ FIX HERE
+  }));
+}
     } catch (error) {
       console.error('Failed to load dashboard:', error);
     } finally {

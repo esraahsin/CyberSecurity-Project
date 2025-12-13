@@ -1,5 +1,5 @@
 /**
- * Transaction Controller - Gestion des transactions bancaires
+ * Transaction Controller - COMPLETE & FIXED
  * @module controllers/TransactionController
  */
 
@@ -283,6 +283,15 @@ class TransactionController {
       const userId = req.user.id;
       const { page = 1, limit = 20, startDate, endDate, type, status } = req.query;
 
+      console.log('📊 Fetching transactions for user:', userId, {
+        page,
+        limit,
+        type,
+        status,
+        startDate,
+        endDate
+      });
+
       const result = await transactionService.getUserTransactions(userId, {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -292,16 +301,47 @@ class TransactionController {
         status
       });
 
+      console.log('✅ Transactions fetched:', {
+        count: result.transactions?.length || 0,
+        total: result.pagination?.total || 0
+      });
+
+      // ✅ Always return valid response even with no data
       res.status(200).json({
         success: true,
-        data: result
+        data: {
+          transactions: result.transactions || [],
+          pagination: result.pagination || {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total: 0,
+            totalPages: 0
+          }
+        }
       });
     } catch (error) {
+      console.error('❌ List User Transactions Error:', error);
       logger.logError(error, { 
         context: 'List User Transactions',
-        userId: req.user?.id 
+        userId: req.user?.id,
+        query: req.query
       });
-      next(error);
+      
+      // ✅ Return proper error response instead of crashing
+      res.status(500).json({
+        success: false,
+        error: 'Failed to load transactions',
+        message: error.message,
+        data: {
+          transactions: [],
+          pagination: {
+            page: parseInt(req.query.page || 1),
+            limit: parseInt(req.query.limit || 20),
+            total: 0,
+            totalPages: 0
+          }
+        }
+      });
     }
   }
 

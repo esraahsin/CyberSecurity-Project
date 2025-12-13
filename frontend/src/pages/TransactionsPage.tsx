@@ -1,4 +1,4 @@
-// frontend/src/pages/TransactionsPage.tsx
+// frontend/src/pages/TransactionsPage.tsx - FIXED VERSION
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -23,11 +23,13 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     loadTransactions();
-  }, [page, filters]);
+  }, [page, filters.type, filters.status]); // ✅ Only reload on filter/page change, not search
 
   const loadTransactions = async () => {
     try {
       setLoading(true);
+      setError(''); // ✅ Clear previous errors
+      
       const response = await transactionService.listTransactions({
         page,
         limit: 20,
@@ -35,15 +37,28 @@ export default function TransactionsPage() {
         status: filters.status || undefined,
       });
       
+      console.log('📊 Transactions response:', response); // ✅ Debug log
+      
       if (response.success && response.data) {
-        setTransactions(response.data.data || []);
-        setTotalPages(response.data.pagination.totalPages);
+        // ✅ FIX: Handle different response structures
+        const txData = response.data.transactions || response.data.data || [];
+        console.log('📊 Transaction data:', txData); // ✅ Debug log
+        
+        setTransactions(Array.isArray(txData) ? txData : []);
+        
+        if (response.data.pagination) {
+          setTotalPages(response.data.pagination.totalPages || 1);
+        }
       } else {
+        console.error('❌ API returned error:', response.error);
         setError(response.error || 'Failed to load transactions');
+        setTransactions([]); // ✅ Clear transactions on error
       }
     } catch (err: any) {
-      console.error('Failed to load transactions:', err);
-      setError(err.message || 'Failed to load transactions');
+      console.error('❌ Failed to load transactions:', err);
+      console.error('Error details:', err.response?.data);
+      setError(err.response?.data?.error || err.message || 'Failed to load transactions');
+      setTransactions([]); // ✅ Clear transactions on error
     } finally {
       setLoading(false);
     }
@@ -113,11 +128,12 @@ export default function TransactionsPage() {
     }
   };
 
+  // ✅ Client-side filtering for search
   const filteredTransactions = transactions.filter(t => {
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       return (
-        t.transactionId.toLowerCase().includes(searchLower) ||
+        t.transactionId?.toLowerCase().includes(searchLower) ||
         t.description?.toLowerCase().includes(searchLower) ||
         t.fromAccount?.toLowerCase().includes(searchLower) ||
         t.toAccount?.toLowerCase().includes(searchLower)
@@ -152,6 +168,14 @@ export default function TransactionsPage() {
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
           <p className="text-sm text-red-700">{error}</p>
+          <Button 
+            onClick={loadTransactions} 
+            variant="outline" 
+            className="mt-2"
+            size="sm"
+          >
+            Try Again
+          </Button>
         </div>
       )}
 
@@ -171,7 +195,10 @@ export default function TransactionsPage() {
 
             <select
               value={filters.type}
-              onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+              onChange={(e) => {
+                setFilters({ ...filters, type: e.target.value });
+                setPage(1); // ✅ Reset to page 1 when filter changes
+              }}
               className="input"
             >
               <option value="">All Types</option>
@@ -183,7 +210,10 @@ export default function TransactionsPage() {
 
             <select
               value={filters.status}
-              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+              onChange={(e) => {
+                setFilters({ ...filters, status: e.target.value });
+                setPage(1); // ✅ Reset to page 1 when filter changes
+              }}
               className="input"
             >
               <option value="">All Status</option>
@@ -196,7 +226,10 @@ export default function TransactionsPage() {
 
             <Button
               variant="outline"
-              onClick={() => setFilters({ type: '', status: '', search: '' })}
+              onClick={() => {
+                setFilters({ type: '', status: '', search: '' });
+                setPage(1);
+              }}
             >
               <Filter className="w-4 h-4 mr-2" />
               Clear Filters
@@ -208,7 +241,10 @@ export default function TransactionsPage() {
       {/* Transactions List */}
       <Card>
         <CardHeader>
-          <CardTitle>Transaction History</CardTitle>
+          <CardTitle>
+            Transaction History ({filteredTransactions.length} 
+            {filters.search && ` of ${transactions.length}`})
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {filteredTransactions.length === 0 ? (
@@ -236,7 +272,6 @@ export default function TransactionsPage() {
                   key={transaction.id}
                   className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-primary-300 transition-colors cursor-pointer"
                   onClick={() => {
-                    // Could navigate to transaction detail page
                     console.log('Transaction clicked:', transaction);
                   }}
                 >
@@ -246,12 +281,12 @@ export default function TransactionsPage() {
                     </div>
                     <div>
                       <p className="font-medium text-gray-900">
-                        {transaction.description || transaction.type.toUpperCase()}
+                        {transaction.description || transaction.type?.toUpperCase()}
                       </p>
                       <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
                         <span>{formatDate(transaction.createdAt)}</span>
                         <span>•</span>
-                        <span className="font-mono">{transaction.transactionId}</span>
+                        <span className="font-mono text-xs">{transaction.transactionId}</span>
                       </div>
                       {(transaction.fromAccount || transaction.toAccount) && (
                         <div className="text-xs text-gray-500 mt-1">
