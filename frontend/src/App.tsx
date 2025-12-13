@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import AdminUserDetailPage from './pages/AdminUserDetailPage';
 
 // Layouts
 import MainLayout from './components/layout/MainLayout';
@@ -116,6 +117,8 @@ function App() {
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="dashboard" element={<AdminDashboardPage />} />
             <Route path="users" element={<AdminUsersPage />} />
+              <Route path="users/:id" element={<AdminUserDetailPage />} />
+
             <Route path="audit-logs" element={<AdminAuditLogsPage />} />
             <Route path="system" element={<AdminSystemPage />} />
             <Route path="settings" element={<AdminSettingsPage />} />
