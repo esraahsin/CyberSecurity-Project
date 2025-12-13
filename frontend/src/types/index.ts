@@ -1,4 +1,4 @@
-// src/types/index.ts
+// frontend/src/types/index.ts - FIXED VERSION
 
 import { ReactNode } from "react";
 
@@ -10,18 +10,17 @@ export interface User {
   id: number;
   email: string;
   username: string;
-  first_name: string; // backend field
-  last_name: string;  // backend field
+  first_name: string;
+  last_name: string;
   phoneNumber?: string;
   dateOfBirth?: string;
   mfaEnabled: boolean;
   emailVerified: boolean;
-  account_status: 'active' | 'suspended' | 'locked' | 'closed'; // backend field
+  account_status: 'active' | 'suspended' | 'locked' | 'closed';
   role: 'user' | 'admin' | 'moderator';
-  created_at: string; // backend field
-  last_login?: string; // backend field
+  created_at: string;
+  last_login?: string;
 }
-
 
 export interface Account {
   id: number;
@@ -83,9 +82,13 @@ export interface PaginationParams {
   endDate?: string;
 }
 
+// ✅ FIX: Generic PaginatedResponse that supports different field names
 export interface PaginatedResponse<T> {
-  users: never[];
-  data: T[];
+  data?: T[];              // For most endpoints
+  transactions?: T[];      // For transaction endpoints
+  users?: T[];            // For user endpoints  
+  accounts?: T[];         // For account endpoints
+  logs?: T[];             // For audit log endpoints
   pagination: {
     page: number;
     limit: number;

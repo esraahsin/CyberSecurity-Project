@@ -1,9 +1,9 @@
-// frontend/src/pages/AccountDetailPage.tsx
+// frontend/src/pages/AccountDetailPage.tsx - FIXED VERSION
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { ArrowUpRight, ArrowDownLeft, ArrowLeft, Download, Snowflake, Lock } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, ArrowLeft, Download, Snowflake } from 'lucide-react';
 import accountService from '../services/account.service';
 import { Account, Transaction, AccountStats } from '../types';
 
@@ -26,7 +26,11 @@ export default function AccountDetailPage() {
   const loadAccountDetails = async () => {
     try {
       setLoading(true);
+      setError(''); // ✅ Clear previous errors
+      
       const response = await accountService.getAccountDetails(parseInt(id!));
+      
+      console.log('Account details response:', response); // ✅ Debug log
       
       if (response.success && response.data) {
         setAccount(response.data.account);
@@ -49,11 +53,16 @@ export default function AccountDetailPage() {
         limit: 10,
       });
       
+      console.log('Transactions response:', response); // ✅ Debug log
+      
       if (response.success && response.data) {
-        setTransactions(response.data.data);
+        // ✅ FIX: Handle different response structures
+        const txData = response.data.transactions || response.data.data || [];
+        setTransactions(Array.isArray(txData) ? txData : []);
       }
     } catch (err: any) {
       console.error('Failed to load transactions:', err);
+      // Don't set error here, just log it
     }
   };
 
@@ -79,7 +88,6 @@ export default function AccountDetailPage() {
       const response = await accountService.getStatement(account.id);
       
       if (response.success && response.data) {
-        // Create CSV or display statement
         alert('Statement generated successfully!');
       }
     } catch (err: any) {
@@ -212,19 +220,19 @@ export default function AccountDetailPage() {
           <Card>
             <CardContent className="pt-6">
               <p className="text-sm text-gray-600">Total Transactions</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">{stats.totalTransactions}</p>
+              <p className="text-3xl font-bold text-gray-900 mt-2">{stats.totalTransactions || 0}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
               <p className="text-sm text-gray-600">Total Debits</p>
-              <p className="text-3xl font-bold text-red-600 mt-2">{formatCurrency(stats.totalDebits)}</p>
+              <p className="text-3xl font-bold text-red-600 mt-2">{formatCurrency(stats.totalDebits || 0)}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
               <p className="text-sm text-gray-600">Total Credits</p>
-              <p className="text-3xl font-bold text-green-600 mt-2">{formatCurrency(stats.totalCredits)}</p>
+              <p className="text-3xl font-bold text-green-600 mt-2">{formatCurrency(stats.totalCredits || 0)}</p>
             </CardContent>
           </Card>
           <Card>
@@ -251,7 +259,8 @@ export default function AccountDetailPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {transactions.length === 0 ? (
+          {/* ✅ FIX: Check if transactions array exists and has length */}
+          {!transactions || transactions.length === 0 ? (
             <p className="text-center text-gray-500 py-8">No transactions yet</p>
           ) : (
             <div className="space-y-4">

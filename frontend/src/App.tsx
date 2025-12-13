@@ -13,6 +13,7 @@ import DashboardPage from './pages/DashboardPage';
 import TransferPage from './pages/TransferPage';
 import AccountsPage from './pages/AccountsPage';
 import AccountDetailPage from './pages/AccountDetailPage';
+import CreateAccountPage from './pages/CreateAccountPage'; // ✅ Import the page
 import TransactionsPage from './pages/TransactionsPage';
 import ProfilePage from './pages/ProfilePage';
 
@@ -130,6 +131,8 @@ function App() {
           >
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/accounts" element={<AccountsPage />} />
+            {/* ✅ CRITICAL FIX: /accounts/new MUST come BEFORE /accounts/:id */}
+            <Route path="/accounts/new" element={<CreateAccountPage />} />
             <Route path="/accounts/:id" element={<AccountDetailPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/transfer" element={<TransferPage />} />
