@@ -1,20 +1,27 @@
 // src/types/index.ts
 
+import { ReactNode } from "react";
+
 export interface User {
+  firstName: ReactNode;
+  lastName: ReactNode;
+  accountStatus(accountStatus: any): unknown;
+  createdAt: string | number | Date;
   id: number;
   email: string;
   username: string;
-  firstName: string;
-  lastName: string;
+  first_name: string; // backend field
+  last_name: string;  // backend field
   phoneNumber?: string;
   dateOfBirth?: string;
   mfaEnabled: boolean;
   emailVerified: boolean;
-  accountStatus: 'active' | 'suspended' | 'locked' | 'closed';
+  account_status: 'active' | 'suspended' | 'locked' | 'closed'; // backend field
   role: 'user' | 'admin' | 'moderator';
-  createdAt: string;
-  lastLogin?: string;
+  created_at: string; // backend field
+  last_login?: string; // backend field
 }
+
 
 export interface Account {
   id: number;
@@ -77,6 +84,7 @@ export interface PaginationParams {
 }
 
 export interface PaginatedResponse<T> {
+  users: never[];
   data: T[];
   pagination: {
     page: number;

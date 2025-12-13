@@ -19,6 +19,56 @@ export default function AdminUsersPage() {
     status: '',
     role: '',
   });
+const loadUsers = async () => {
+  try {
+    setLoading(true);
+    const response = await adminService.listUsers({
+      page,
+      limit: 20,
+      status: filters.status || undefined,
+      role: filters.role || undefined,
+    });
+    
+    if (response.success && response.data) {
+      // Use the correct path
+      setUsers(response.data.users || []);
+      setTotalPages(response.data.pagination?.totalPages || 1);
+    } else {
+      setUsers([]);
+      setError(response.error || 'Failed to load users');
+    }
+  } catch (err: any) {
+    console.error('Failed to load users:', err);
+    setError(err.message || 'Failed to load users');
+  } finally {
+    setLoading(false);
+  }
+};
+
+const searchUsers = async () => {
+  if (!searchQuery.trim()) {
+    loadUsers();
+    return;
+  }
+
+  try {
+    setLoading(true);
+    const response = await adminService.searchUsers(searchQuery, { page, limit: 20 });
+    
+    if (response.success && response.data) {
+      setUsers(response.data.users || []);
+      setTotalPages(response.data.pagination?.totalPages || 1);
+    } else {
+      setUsers([]);
+      setError(response.error || 'Search failed');
+    }
+  } catch (err: any) {
+    console.error('Search failed:', err);
+    setError(err.message || 'Search failed');
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     if (searchQuery) {
@@ -28,58 +78,7 @@ export default function AdminUsersPage() {
     }
   }, [page, filters]);
 
-  const loadUsers = async () => {
-    try {
-      setLoading(true);
-      const response = await adminService.listUsers({
-        page,
-        limit: 20,
-        status: filters.status || undefined,
-        role: filters.role || undefined,
-      });
-      
-      if (response.success && response.data) {
-  setUsers(response.data.data || []);
-  setTotalPages(response.data.pagination?.totalPages || 1);
-} else {
-  setUsers([]); // ✅ VERY IMPORTANT
-  setError(response.error || 'Failed to load users');
-}
-
-
-    } catch (err: any) {
-      console.error('Failed to load users:', err);
-      setError(err.message || 'Failed to load users');
-    } finally {
-      setLoading(false);
-    }
-
-  };
-
-  const searchUsers = async () => {
-    if (!searchQuery.trim()) {
-      loadUsers();
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const response = await adminService.searchUsers(searchQuery, { page, limit: 20 });
-      
-      if (response.success && response.data) {
-  setUsers(response.data.data || []);
-  setTotalPages(response.data.pagination?.totalPages || 1);
-} else {
-  setUsers([]); // ✅ prevent undefined
-}
-
-    } catch (err: any) {
-      console.error('Search failed:', err);
-      setError(err.message || 'Search failed');
-    } finally {
-      setLoading(false);
-    }
-  };
+ 
 
   const handleSearch = () => {
     setPage(1);
@@ -269,8 +268,8 @@ export default function AdminUsersPage() {
                         <span className="text-sm text-gray-900">{user.username}</span>
                       </td>
                       <td className="px-4 py-4">
-                        <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(user.accountStatus)}`}>
-                          {user.accountStatus}
+                        <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(user.account_status)}`}>
+                          {user.account_status}
                         </span>
                       </td>
                       <td className="px-4 py-4">
@@ -294,7 +293,7 @@ export default function AdminUsersPage() {
                             <Eye className="w-4 h-4" />
                           </Button>
 
-                          {user.accountStatus === 'locked' && (
+                          {user.account_status === 'locked' && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -326,7 +325,7 @@ export default function AdminUsersPage() {
                             <Shield className={`w-4 h-4 ${user.role === 'admin' ? 'text-purple-600' : 'text-gray-400'}`} />
                           </Button>
 
-                          {user.accountStatus === 'active' && (
+                          {user.account_status === 'active' && (
                             <Button
                               variant="ghost"
                               size="sm"

@@ -15,11 +15,16 @@ export default function ProfilePage() {
   const [success, setSuccess] = useState('');
 
   // Profile form
-  const [profileData, setProfileData] = useState({
-    firstName: user?.firstName || '',
-    lastName: user?.lastName || '',
-    phoneNumber: user?.phoneNumber || '',
-    email: user?.email || '',
+  const [profileData, setProfileData] = useState<{
+    firstName: string;
+    lastName: string;
+    phoneNumber: string;
+    email: string;
+  }>({
+    firstName: String(user?.firstName || ''),
+    lastName: String(user?.lastName || ''),
+    phoneNumber: String(user?.phoneNumber || ''),
+    email: String(user?.email || ''),
   });
 
   // Password form
@@ -32,10 +37,10 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user) {
       setProfileData({
-        firstName: user.firstName,
-        lastName: user.lastName,
-        phoneNumber: user.phoneNumber || '',
-        email: user.email,
+        firstName: String(user.firstName || ''),
+        lastName: String(user.lastName || ''),
+        phoneNumber: String(user.phoneNumber || ''),
+        email: String(user.email || ''),
       });
     }
   }, [user]);
@@ -172,11 +177,11 @@ export default function ProfilePage() {
               <p className="text-gray-600">{user?.email}</p>
               <div className="flex items-center gap-2 mt-1">
                 <span className={`text-xs px-2 py-1 rounded-full ${
-                  user?.accountStatus === 'active' 
+                  user?.account_status === 'active' 
                     ? 'bg-green-100 text-green-700' 
                     : 'bg-red-100 text-red-700'
                 }`}>
-                  {user?.accountStatus}
+                  {user?.account_status}
                 </span>
                 <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
                   {user?.role}
