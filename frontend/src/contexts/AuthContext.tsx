@@ -1,5 +1,6 @@
-// src/contexts/AuthContext.tsx
+// frontend/src/contexts/AuthContext.tsx
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { User } from '../types';
 import authService from '../services/auth.service';
 
@@ -43,17 +44,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (response.success && response.data) {
           setUser(response.data.user);
         } else {
-          setUser(null);
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          localStorage.removeItem('user');
+          // Token invalide, nettoyer
+          clearAuthData();
         }
       } catch (error) {
         console.error('Failed to load user:', error);
-        setUser(null);
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
+        clearAuthData();
       } finally {
         setLoading(false);
       }
@@ -62,32 +58,57 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     loadUser();
   }, []);
 
+  const clearAuthData = () => {
+    setUser(null);
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+  };
+
   const login = async (email: string, password: string, rememberMe = false) => {
-    const response = await authService.login({ email, password, rememberMe });
-    
-    if (response.success && response.data) {
-      setUser(response.data.user);
-      localStorage.setItem('accessToken', response.data.accessToken);
-      localStorage.setItem('refreshToken', response.data.refreshToken);
-    } else {
-      throw new Error(response.error || 'Login failed');
+    try {
+      const response = await authService.login({ email, password, rememberMe });
+      
+      if (response.success && response.data) {
+        setUser(response.data.user);
+        localStorage.setItem('accessToken', response.data.accessToken);
+        localStorage.setItem('refreshToken', response.data.refreshToken);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+      } else {
+        throw new Error(response.error || 'Login failed');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      throw error;
     }
   };
 
   const logout = async () => {
     try {
+      // Appeler l'API pour invalider le token côté serveur
       await authService.logout();
+    } catch (error) {
+      console.error('Logout API error:', error);
+      // Continuer même si l'API échoue
     } finally {
-      setUser(null);
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('user');
+      // Toujours nettoyer les données locales
+      clearAuthData();
+      
+      // Rediriger vers la page de login
+      window.location.href = '/login';
     }
   };
 
   const register = async (data: any) => {
-    const response = await authService.register(data);
-    if (!response.success) throw new Error(response.error || 'Registration failed');
+    try {
+      const response = await authService.register(data);
+      if (!response.success) {
+        throw new Error(response.error || 'Registration failed');
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      throw error;
+    }
   };
 
   const updateUser = (updatedUser: User) => {
