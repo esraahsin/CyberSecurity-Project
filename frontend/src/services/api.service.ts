@@ -86,7 +86,7 @@ class ApiService {
   }
 
   // DELETE request
-  async delete<T>(url: string): Promise<T> {
+  async delete<T>(url: string, p0?: { daysToKeep: number; }): Promise<T> {
     const response = await this.api.delete<T>(url);
     return response.data;
   }
