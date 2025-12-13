@@ -118,7 +118,7 @@ class TransactionService {
   /**
    * Crée un transfert entre deux comptes
    */
-  async createTransfer(fromAccountId, toAccountId, amount, userId, description = '') {
+   async createTransfer(fromAccountId, toAccountId, amount, userId, description = '') {
     const client = await pool.connect();
     
     try {
@@ -126,7 +126,7 @@ class TransactionService {
       
       // 1. Vérifier le solde disponible
       const fromAccount = await client.query(
-        'SELECT balance, account_status, daily_transfer_limit FROM accounts WHERE id = $1',
+        'SELECT balance, available_balance, account_status, daily_transfer_limit FROM accounts WHERE id = $1',
         [fromAccountId]
       );
       
@@ -138,7 +138,8 @@ class TransactionService {
         throw new Error('Source account is not active');
       }
       
-      if (fromAccount.rows[0].balance < amount) {
+      // ✅ FIX: Check available_balance instead of just balance
+      if (fromAccount.rows[0].available_balance < amount) {
         throw new Error('Insufficient funds');
       }
       
@@ -147,7 +148,7 @@ class TransactionService {
       
       // 3. Vérifier le compte destinataire
       const toAccount = await client.query(
-        'SELECT account_status FROM accounts WHERE id = $1',
+        'SELECT account_status, balance, available_balance FROM accounts WHERE id = $1',
         [toAccountId]
       );
       
@@ -180,18 +181,27 @@ class TransactionService {
         description,
         fromAccount.rows[0].balance,
         fromAccount.rows[0].balance - amount,
-        toAccount.rows[0].balance || 0,
-        (toAccount.rows[0].balance || 0) + amount
+        toAccount.rows[0].balance,
+        toAccount.rows[0].balance + amount
       ]);
       
-      // 5. Mettre à jour les soldes
+      // ✅ FIX: Update BOTH balance AND available_balance for sender
       await client.query(
-        'UPDATE accounts SET balance = balance - $1 WHERE id = $2',
+        `UPDATE accounts 
+         SET balance = balance - $1, 
+             available_balance = available_balance - $1,
+             last_transaction_at = NOW()
+         WHERE id = $2`,
         [amount, fromAccountId]
       );
       
+      // ✅ FIX: Update BOTH balance AND available_balance for receiver
       await client.query(
-        'UPDATE accounts SET balance = balance + $1 WHERE id = $2',
+        `UPDATE accounts 
+         SET balance = balance + $1, 
+             available_balance = available_balance + $1,
+             last_transaction_at = NOW()
+         WHERE id = $2`,
         [amount, toAccountId]
       );
       
@@ -230,7 +240,7 @@ class TransactionService {
   /**
    * Valide une transaction avant exécution
    */
-  async validateTransaction(fromAccountId, toAccountId, amount) {
+   async validateTransaction(fromAccountId, toAccountId, amount) {
     const errors = [];
     
     // Validation du montant
@@ -262,11 +272,10 @@ class TransactionService {
       errors
     };
   }
-  
   /**
    * Vérifie les limites quotidiennes
    */
-  async checkDailyLimits(accountId, amount, client = pool) {
+   async checkDailyLimits(accountId, amount, client = pool) {
     const today = new Date().toISOString().split('T')[0];
     
     // Récupérer les limites du compte
@@ -458,30 +467,161 @@ class TransactionService {
       largestTransaction: parseInt(stats.largest_transaction) / 100
     };
   }
+ async updateAccountBalances(client, accountId, amount, operation = 'add') {
+    const operator = operation === 'add' ? '+' : '-';
+    
+    const result = await client.query(
+      `UPDATE accounts
+       SET 
+         balance = balance ${operator} $1,
+         available_balance = available_balance ${operator} $1,
+         updated_at = NOW(),
+         last_transaction_at = NOW()
+       WHERE id = $2
+       RETURNING id, account_number, balance, available_balance`,
+      [amount, accountId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error('Account not found');
+    }
+
+    return result.rows[0];
+  }
 
   /**
    * Crée un dépôt
    */
-  async createDeposit(accountId, amount, description) {
-    // Implementation placeholder
-    return {
-      transactionId: `TXN${Date.now()}`,
-      amount,
-      newBalance: 0 // Should be calculated
-    };
+  async createDeposit(accountId, amount, description = 'Deposit') {
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+      
+      // Vérifier que le compte existe
+      const accountCheck = await client.query(
+        'SELECT balance, available_balance FROM accounts WHERE id = $1',
+        [accountId]
+      );
+      
+      if (accountCheck.rows.length === 0) {
+        throw new Error('Account not found');
+      }
+      
+      const oldBalance = accountCheck.rows[0].balance;
+      const oldAvailableBalance = accountCheck.rows[0].available_balance;
+      
+      // Créer la transaction
+      const transactionId = `TXN${Date.now()}${Math.floor(Math.random() * 10000)}`;
+      
+      await client.query(`
+        INSERT INTO transactions (
+          transaction_id, to_account_id, transaction_type,
+          amount, status, description, completed_at,
+          to_balance_before, to_balance_after
+        ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8)
+      `, [
+        transactionId,
+        accountId,
+        'deposit',
+        amount,
+        'completed',
+        description,
+        oldBalance,
+        oldBalance + amount
+      ]);
+      
+      // ✅ FIX: Update both balances
+      const updatedAccount = await this.updateAccountBalances(client, accountId, amount, 'add');
+      
+      await client.query('COMMIT');
+      
+      logger.info('Deposit completed', { transactionId, accountId, amount });
+      
+      return {
+        transactionId,
+        amount,
+        newBalance: updatedAccount.balance
+      };
+      
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Deposit failed', { error: error.message, accountId });
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   /**
    * Crée un retrait
    */
-  async createWithdrawal(accountId, amount, description) {
-    // Implementation placeholder
-    return {
-      transactionId: `TXN${Date.now()}`,
-      amount,
-      newBalance: 0 // Should be calculated
-    };
+   async createWithdrawal(accountId, amount, description = 'Withdrawal') {
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+      
+      // Vérifier le solde disponible
+      const accountCheck = await client.query(
+        'SELECT balance, available_balance FROM accounts WHERE id = $1',
+        [accountId]
+      );
+      
+      if (accountCheck.rows.length === 0) {
+        throw new Error('Account not found');
+      }
+      
+      // ✅ FIX: Check available_balance
+      if (accountCheck.rows[0].available_balance < amount) {
+        throw new Error('Insufficient funds');
+      }
+      
+      const oldBalance = accountCheck.rows[0].balance;
+      const oldAvailableBalance = accountCheck.rows[0].available_balance;
+      
+      // Créer la transaction
+      const transactionId = `TXN${Date.now()}${Math.floor(Math.random() * 10000)}`;
+      
+      await client.query(`
+        INSERT INTO transactions (
+          transaction_id, from_account_id, transaction_type,
+          amount, status, description, completed_at,
+          from_balance_before, from_balance_after
+        ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8)
+      `, [
+        transactionId,
+        accountId,
+        'withdrawal',
+        amount,
+        'completed',
+        description,
+        oldBalance,
+        oldBalance - amount
+      ]);
+      
+      // ✅ FIX: Update both balances
+      const updatedAccount = await this.updateAccountBalances(client, accountId, amount, 'subtract');
+      
+      await client.query('COMMIT');
+      
+      logger.info('Withdrawal completed', { transactionId, accountId, amount });
+      
+      return {
+        transactionId,
+        amount,
+        newBalance: updatedAccount.balance
+      };
+      
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Withdrawal failed', { error: error.message, accountId });
+      throw error;
+    } finally {
+      client.release();
+    }
   }
+
 }
 
 module.exports = new TransactionService();
