@@ -342,11 +342,15 @@ async disableMFA(req, res, next) {
  * POST /api/auth/login
  * Connexion utilisateur - FIXED VERSION
  */
+// backend/src/controllers/AuthController.js - LOGIN METHOD ONLY
+
 async login(req, res, next) {
   try {
     const { email, password, rememberMe = false } = req.body;
     const ipAddress = req.ip;
     const userAgent = req.get('user-agent');
+
+    console.log('🔐 Login attempt for:', email);
 
     await auditService.logAction({
       action: 'LOGIN_ATTEMPT',
@@ -360,9 +364,12 @@ async login(req, res, next) {
 
     // Authenticate user
     const result = await authService.login(email, password, ipAddress);
-
-    // ✅ FIX: Access user from result.user, not from undefined 'user' variable
     const user = result.user;
+
+    console.log('✅ User authenticated:', {
+      userId: user.id,
+      mfaEnabled: user.mfaEnabled
+    });
 
     // Create session
     const session = await sessionService.createSession({
@@ -371,17 +378,23 @@ async login(req, res, next) {
       refreshToken: result.refreshToken,
       ipAddress,
       userAgent,
-      mfaVerified: !user.mfaEnabled  // ✅ FIX: Use user from result
+      mfaVerified: !user.mfaEnabled
     });
 
-    // ✅ FIX: Check if MFA is enabled using result.user
+    console.log('✅ Session created:', session.sessionId);
+
+    // ✅ Check if MFA is enabled
     if (user.mfaEnabled) {
+      console.log('🔐 MFA is enabled - sending code');
+      
       // Send MFA code by email
-      await mfaService.sendMFACode(
+      const mfaResult = await mfaService.sendMFACode(
         user.id,
         user.email,
         `${user.firstName} ${user.lastName}`
       );
+      
+      console.log('📧 MFA code sent:', mfaResult);
       
       await auditService.logAction({
         userId: user.id,
@@ -393,11 +406,13 @@ async login(req, res, next) {
         ipAddress
       });
 
+      // ✅ CRITICAL: Return with requiresMfa flag
       return res.status(200).json({
         success: true,
         requiresMfa: true,
         message: 'MFA code sent to your email',
         data: {
+          requiresMfa: true, // Also in data for consistency
           sessionId: session.sessionId,
           email: user.email.replace(/(.{2}).*(@.*)/, '$1***$2') // Masked
         }
@@ -405,6 +420,8 @@ async login(req, res, next) {
     }
 
     // ✅ No MFA required, complete login
+    console.log('✅ No MFA required - login complete');
+    
     await auditService.logAction({
       userId: user.id,
       sessionId: session.sessionId,
@@ -436,6 +453,7 @@ async login(req, res, next) {
       }
     });
   } catch (error) {
+    console.error('❌ Login error:', error);
     logger.logError(error, { 
       context: 'Login',
       email: req.body.email,
@@ -456,7 +474,6 @@ async login(req, res, next) {
     next(error);
   }
 }
-
   /**
    * POST /api/auth/logout
    * Déconnexion utilisateur

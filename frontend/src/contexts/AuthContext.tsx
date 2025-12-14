@@ -66,23 +66,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
 // frontend/src/contexts/AuthContext.tsx - Updated login method
-
 const login = async (email: string, password: string, rememberMe = false) => {
   try {
+    console.log('🔐 AuthContext: Starting login for', email);
+    
     const response = await authService.login({ email, password, rememberMe });
     
+    console.log('📨 AuthContext: Login response:', response);
+    
     if (response.success && response.data) {
-      // ✅ Check if MFA is required
+      // ✅ Check if MFA is required (API returns requiresMfa: true)
       if (response.data.requiresMfa) {
-        // Throw error with MFA info to be caught by LoginPage
+        console.log('🔐 MFA Required - throwing error with sessionId:', response.data.sessionId);
+        
+        // Create special error that LoginPage will catch
         const mfaError: any = new Error('MFA verification required');
         mfaError.requiresMfa = true;
         mfaError.sessionId = response.data.sessionId;
-        mfaError.email = response.data.email;
+        mfaError.email = response.data.email || email.replace(/(.{2}).*(@.*)/, '$1***$2');
+        
         throw mfaError;
       }
 
-      // No MFA required - complete login
+      // No MFA required - complete login immediately
+      console.log('✅ No MFA required, logging in user');
       setUser(response.data.user);
       localStorage.setItem('accessToken', response.data.accessToken);
       localStorage.setItem('refreshToken', response.data.refreshToken);
@@ -91,8 +98,8 @@ const login = async (email: string, password: string, rememberMe = false) => {
       throw new Error(response.error || 'Login failed');
     }
   } catch (error) {
-    console.error('Login error:', error);
-    throw error;
+    console.error('❌ AuthContext login error:', error);
+    throw error; // Re-throw to be caught by LoginPage
   }
 };
 

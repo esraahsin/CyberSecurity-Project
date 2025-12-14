@@ -32,13 +32,30 @@ const handleSubmit = async (e: React.FormEvent) => {
   setError('');
   setLoading(true);
 
+  console.log('🔐 LoginPage: Attempting login for', formData.email);
+
   try {
     await login(formData.email, formData.password, formData.rememberMe);
-    // Login function will throw error if MFA is required or handle redirect
+    
+    // If we reach here, login was successful without MFA
+    console.log('✅ Login successful - no MFA required');
+    
   } catch (err: any) {
+    console.log('⚠️ LoginPage caught error:', err);
+    console.log('Error properties:', {
+      message: err.message,
+      requiresMfa: err.requiresMfa,
+      sessionId: err.sessionId,
+      email: err.email
+    });
+    
     // Check if MFA is required
     if (err.requiresMfa && err.sessionId) {
-      // Redirect to MFA verification page
+      console.log('🔐 MFA Required - redirecting to verification page');
+      console.log('Session ID:', err.sessionId);
+      console.log('Email:', err.email);
+      
+      // Redirect to MFA verification page with state
       navigate('/verify-mfa', {
         state: {
           sessionId: err.sessionId,
@@ -46,9 +63,11 @@ const handleSubmit = async (e: React.FormEvent) => {
         },
         replace: true
       });
-      return;
+      return; // Stop here, don't show error
     }
     
+    // Not MFA error - show normal error
+    console.error('❌ Login failed:', err.message);
     setError(err.message || 'Invalid credentials');
   } finally {
     setLoading(false);
