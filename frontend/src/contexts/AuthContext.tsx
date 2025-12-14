@@ -65,23 +65,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     localStorage.removeItem('user');
   };
 
-  const login = async (email: string, password: string, rememberMe = false) => {
-    try {
-      const response = await authService.login({ email, password, rememberMe });
-      
-      if (response.success && response.data) {
-        setUser(response.data.user);
-        localStorage.setItem('accessToken', response.data.accessToken);
-        localStorage.setItem('refreshToken', response.data.refreshToken);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-      } else {
-        throw new Error(response.error || 'Login failed');
+// frontend/src/contexts/AuthContext.tsx - Updated login method
+
+const login = async (email: string, password: string, rememberMe = false) => {
+  try {
+    const response = await authService.login({ email, password, rememberMe });
+    
+    if (response.success && response.data) {
+      // ✅ Check if MFA is required
+      if (response.data.requiresMfa) {
+        // Throw error with MFA info to be caught by LoginPage
+        const mfaError: any = new Error('MFA verification required');
+        mfaError.requiresMfa = true;
+        mfaError.sessionId = response.data.sessionId;
+        mfaError.email = response.data.email;
+        throw mfaError;
       }
-    } catch (error) {
-      console.error('Login error:', error);
-      throw error;
+
+      // No MFA required - complete login
+      setUser(response.data.user);
+      localStorage.setItem('accessToken', response.data.accessToken);
+      localStorage.setItem('refreshToken', response.data.refreshToken);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+    } else {
+      throw new Error(response.error || 'Login failed');
     }
-  };
+  } catch (error) {
+    console.error('Login error:', error);
+    throw error;
+  }
+};
 
   const logout = async () => {
     try {

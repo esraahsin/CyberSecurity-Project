@@ -30,6 +30,7 @@ interface RegisterRequest {
 }
 
 interface LoginResponse {
+  email: any;
   user: User;
   accessToken: string;
   refreshToken: string;
@@ -95,7 +96,19 @@ class AuthService {
   async changePassword(data: ChangePasswordRequest): Promise<ApiResponse<void>> {
     return api.post('/auth/change-password', data);
   }
+/**
+ * Verify MFA code during login
+ */
+async verifyMFALogin(sessionId: string, code: string): Promise<ApiResponse<LoginResponse>> {
+  return api.post('/auth/verify-mfa', { sessionId, code });
+}
 
+/**
+ * Resend MFA code
+ */
+async resendMFACode(sessionId: string): Promise<ApiResponse<{ message: string }>> {
+  return api.post('/auth/resend-mfa', { sessionId });
+}
   // Récupérer les sessions actives
   async getSessions(): Promise<ApiResponse<{ sessions: Session[] }>> {
     return api.get('/auth/sessions');

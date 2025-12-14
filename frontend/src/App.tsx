@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AdminUserDetailPage from './pages/AdminUserDetailPage';
+import MFAVerificationPage from './pages/MFAVerificationPage';
 
 // Layouts
 import MainLayout from './components/layout/MainLayout';
@@ -105,6 +106,14 @@ function App() {
             }
           />
 
+<Route
+  path="/verify-mfa"
+  element={
+    <PublicRoute>
+      <MFAVerificationPage />
+    </PublicRoute>
+  }
+/>
           {/* Admin Routes */}
           <Route
             path="/admin"

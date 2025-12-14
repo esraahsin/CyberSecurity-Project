@@ -136,15 +136,14 @@ class AuthController {
       });
 
       // ✅ If MFA is enabled, send code and require verification
-      if (result.user.mfaEnabled) {
-        // Send MFA code by email
-        await mfaService.sendMFACode(
-          result.user.id,
-          result.user.email,
-          `${result.user.firstName} ${result.user.lastName}`
-        );
-
-        await auditService.logAction({
+      if (user.mfa_enabled) {
+  // Send MFA code by email
+  await mfaService.sendMFACode(
+    user.id,
+    user.email,
+    `${user.first_name} ${user.last_name}`
+  );
+  await auditService.logAction({
           userId: result.user.id,
           sessionId: session.sessionId,
           action: 'MFA_CODE_SENT',
@@ -153,18 +152,16 @@ class AuthController {
           severity: 'info',
           ipAddress
         });
-
-        return res.status(200).json({
-          success: true,
-          requiresMfa: true,
-          message: 'MFA code sent to your email',
-          data: {
-            sessionId: session.sessionId,
-            email: result.user.email.replace(/(.{2}).*(@.*)/, '$1***$2') // Masked email
-          }
-        });
-      }
-
+ return res.status(200).json({
+    success: true,
+    requiresMfa: true,
+    message: 'MFA code sent to your email',
+    data: {
+      sessionId: session.sessionId,
+      email: user.email.replace(/(.{2}).*(@.*)/, '$1***$2') // Masked
+    }
+  });
+}
       // ✅ No MFA required, complete login
       await auditService.logAction({
         userId: result.user.id,

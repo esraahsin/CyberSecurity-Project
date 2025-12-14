@@ -25,21 +25,35 @@ const LoginPage: React.FC = () => {
     }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+ // frontend/src/pages/LoginPage.tsx - Updated handleSubmit method
 
-    try {
-      await login(formData.email, formData.password, formData.rememberMe);
-      navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Invalid credentials');
-    } finally {
-      setLoading(false);
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setError('');
+  setLoading(true);
+
+  try {
+    await login(formData.email, formData.password, formData.rememberMe);
+    // Login function will throw error if MFA is required or handle redirect
+  } catch (err: any) {
+    // Check if MFA is required
+    if (err.requiresMfa && err.sessionId) {
+      // Redirect to MFA verification page
+      navigate('/verify-mfa', {
+        state: {
+          sessionId: err.sessionId,
+          email: err.email || formData.email.replace(/(.{2}).*(@.*)/, '$1***$2')
+        },
+        replace: true
+      });
+      return;
     }
-  };
-
+    
+    setError(err.message || 'Invalid credentials');
+  } finally {
+    setLoading(false);
+  }
+};
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 flex items-center justify-center p-4">
       <div className="max-w-md w-full">
