@@ -411,6 +411,39 @@ class SessionService {
     const cached = await redisClient.get(key);
     return cached ? JSON.parse(cached) : null;
   }
+async verifyMFAForSession(sessionId) {
+  try {
+    const result = await pool.query(
+      `UPDATE sessions 
+       SET mfa_verified = true, mfa_verified_at = CURRENT_TIMESTAMP
+       WHERE session_id = $1 AND is_active = true
+       RETURNING session_id, mfa_verified`,
+      [sessionId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error('Session not found or inactive');
+    }
+
+    // Update cache
+    const cachedSession = await this._getCachedSession(sessionId);
+    if (cachedSession) {
+      cachedSession.mfaVerified = true;
+      const ttl = Math.floor((new Date(cachedSession.expiresAt) - new Date()) / 1000);
+      if (ttl > 0) {
+        await this._cacheSession(sessionId, cachedSession, ttl);
+      }
+    }
+
+    logger.info('MFA verified for session', { sessionId });
+
+    return result.rows[0];
+
+  } catch (error) {
+    logger.error('MFA verification error', { error: error.message, sessionId });
+    throw error;
+  }
+}
 
   /**
    * Met à jour l'activité d'une session

@@ -8,11 +8,14 @@ const authService = require('../services/auth.service');
 const userService = require('../services/user.service');
 const sessionService = require('../services/session.service');
 const auditService = require('../services/audit.service');
+const mfaService = require('../services/mfa.service');
+const emailService = require('../services/email.service');
 const logger = require('../utils/logger');
+const pool = require('../config/database');
+const redisClient = require('../config/redis');
 
 class AuthController {
   constructor() {
-    // ✅ FIX: Lier toutes les méthodes au contexte de la classe
     this.register = this.register.bind(this);
     this.login = this.login.bind(this);
     this.logout = this.logout.bind(this);
@@ -20,11 +23,12 @@ class AuthController {
     this.getProfile = this.getProfile.bind(this);
     this.updateProfile = this.updateProfile.bind(this);
     this.changePassword = this.changePassword.bind(this);
-    this.requestPasswordReset = this.requestPasswordReset.bind(this);
-    this.verifyEmail = this.verifyEmail.bind(this);
-    this.getSessions = this.getSessions.bind(this);
-    this.terminateSession = this.terminateSession.bind(this);
-    this.terminateAllSessions = this.terminateAllSessions.bind(this);
+    this.verifyMFA = this.verifyMFA.bind(this);
+    this.resendMFA = this.resendMFA.bind(this);
+    this.enableMFA = this.enableMFA.bind(this);
+    this.verifyMFASetup = this.verifyMFASetup.bind(this);
+    this.disableMFA = this.disableMFA.bind(this);
+    this.getMFAStatus = this.getMFAStatus.bind(this);
   }
 
   /**
@@ -102,13 +106,12 @@ class AuthController {
    * POST /api/auth/login
    * Connexion utilisateur
    */
-  async login(req, res, next) {
+   async login(req, res, next) {
     try {
       const { email, password, rememberMe = false } = req.body;
       const ipAddress = req.ip;
       const userAgent = req.get('user-agent');
 
-      // Log tentative
       await auditService.logAction({
         action: 'LOGIN_ATTEMPT',
         resourceType: 'user',
@@ -119,10 +122,10 @@ class AuthController {
         requestBody: { email }
       });
 
-      // Authentifier
+      // Authenticate user
       const result = await authService.login(email, password, ipAddress);
 
-      // Créer la session
+      // Create session
       const session = await sessionService.createSession({
         userId: result.user.id,
         accessToken: result.accessToken,
@@ -132,7 +135,37 @@ class AuthController {
         mfaVerified: !result.user.mfaEnabled
       });
 
-      // Log succès
+      // ✅ If MFA is enabled, send code and require verification
+      if (result.user.mfaEnabled) {
+        // Send MFA code by email
+        await mfaService.sendMFACode(
+          result.user.id,
+          result.user.email,
+          `${result.user.firstName} ${result.user.lastName}`
+        );
+
+        await auditService.logAction({
+          userId: result.user.id,
+          sessionId: session.sessionId,
+          action: 'MFA_CODE_SENT',
+          resourceType: 'user',
+          eventType: 'authentication',
+          severity: 'info',
+          ipAddress
+        });
+
+        return res.status(200).json({
+          success: true,
+          requiresMfa: true,
+          message: 'MFA code sent to your email',
+          data: {
+            sessionId: session.sessionId,
+            email: result.user.email.replace(/(.{2}).*(@.*)/, '$1***$2') // Masked email
+          }
+        });
+      }
+
+      // ✅ No MFA required, complete login
       await auditService.logAction({
         userId: result.user.id,
         sessionId: session.sessionId,
@@ -144,16 +177,6 @@ class AuthController {
         ipAddress,
         userAgent
       });
-
-      // Si MFA activé, on demande la vérification
-      if (result.user.mfaEnabled) {
-        return res.status(200).json({
-          success: true,
-          requiresMfa: true,
-          message: 'MFA verification required',
-          sessionId: session.sessionId
-        });
-      }
 
       res.status(200).json({
         success: true,
@@ -547,10 +570,11 @@ class AuthController {
    * POST /api/auth/mfa/verify
    * Vérifie le code MFA et finalise la connexion
    */
-  async verifyMFA(req, res, next) {
+   async verifyMFA(req, res, next) {
     try {
       const { sessionId, code } = req.body;
 
+      // Validate inputs
       if (!sessionId || !code) {
         return res.status(400).json({
           success: false,
@@ -558,7 +582,14 @@ class AuthController {
         });
       }
 
-      // Récupérer la session
+      if (!/^\d{6}$/.test(code)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid MFA code format. Must be 6 digits.'
+        });
+      }
+
+      // Get session
       const session = await sessionService.validateSession(sessionId);
 
       if (!session) {
@@ -568,42 +599,39 @@ class AuthController {
         });
       }
 
-      // Récupérer l'utilisateur et son secret MFA
-      const user = await userService.getUserById(session.userId);
+      // Verify MFA code
+      const verification = await mfaService.verifyMFACode(session.userId, code);
 
-      if (!user.mfa_enabled || !user.mfa_secret) {
-        return res.status(400).json({
-          success: false,
-          error: 'MFA is not enabled for this account'
-        });
-      }
-
-      // Vérifier le code MFA (normalement avec speakeasy ou similar)
-      // Pour cette démo, on accepte un code à 6 chiffres
-      const isValidCode = /^\d{6}$/.test(code);
-
-      if (!isValidCode) {
+      if (!verification.valid) {
         await auditService.logSecurityEvent({
-          userId: user.id,
+          userId: session.userId,
           event: 'MFA_VERIFICATION_FAILED',
           severity: 'warning',
           details: {
             sessionId,
-            reason: 'Invalid code format'
+            reason: verification.error
           },
           ipAddress: req.ip
         });
 
         return res.status(400).json({
           success: false,
-          error: 'Invalid MFA code'
+          error: verification.error || 'Invalid MFA code'
         });
       }
 
-      // Marquer la session comme MFA vérifié
+      // Mark session as MFA verified
       await sessionService.verifyMFAForSession(sessionId);
 
-      // Log audit
+      // Get user details
+      const user = await userService.getUserById(session.userId);
+
+      // Get session tokens from database
+      const sessionData = await pool.query(
+        'SELECT access_token, refresh_token, expires_at FROM sessions WHERE session_id = $1',
+        [sessionId]
+      );
+
       await auditService.logAction({
         userId: user.id,
         sessionId,
@@ -618,12 +646,18 @@ class AuthController {
         success: true,
         message: 'MFA verification successful',
         data: {
-          sessionId,
           user: {
             id: user.id,
             email: user.email,
-            username: user.username
-          }
+            username: user.username,
+            firstName: user.first_name,
+            lastName: user.last_name,
+            role: user.role
+          },
+          accessToken: sessionData.rows[0].access_token,
+          refreshToken: sessionData.rows[0].refresh_token,
+          sessionId,
+          expiresAt: sessionData.rows[0].expires_at
         }
       });
     } catch (error) {
@@ -635,11 +669,12 @@ class AuthController {
     }
   }
 
+
   /**
    * POST /api/auth/mfa/resend
    * Renvoie le code MFA (par email/SMS)
    */
-  async resendMFA(req, res, next) {
+ async resendMFA(req, res, next) {
     try {
       const { sessionId } = req.body;
 
@@ -650,7 +685,7 @@ class AuthController {
         });
       }
 
-      // Vérifier la session
+      // Validate session
       const session = await sessionService.validateSession(sessionId);
 
       if (!session) {
@@ -660,24 +695,25 @@ class AuthController {
         });
       }
 
-      // Rate limiting pour éviter le spam
-      const resendKey = `mfa_resend:${session.userId}`;
-      const resendCount = await redisClient.get(resendKey);
+      // Get user
+      const user = await userService.getUserById(session.userId);
 
-      if (resendCount && parseInt(resendCount) >= 3) {
+      // Check if user is locked from too many resend attempts
+      const isLocked = await mfaService.isUserLocked(session.userId);
+      if (isLocked) {
         return res.status(429).json({
           success: false,
-          error: 'Too many resend attempts. Please try again later.'
+          error: 'Too many attempts. Please try again later.'
         });
       }
 
-      // TODO: Implémenter l'envoi du code par email/SMS
-      // Pour l'instant, on simule juste l'envoi
-      
-      // Incrémenter le compteur
-      await redisClient.setEx(resendKey, 300, String(parseInt(resendCount || 0) + 1));
+      // Resend MFA code
+      await mfaService.resendMFACode(
+        session.userId,
+        user.email,
+        `${user.first_name} ${user.last_name}`
+      );
 
-      // Log audit
       await auditService.logAction({
         userId: session.userId,
         action: 'MFA_CODE_RESENT',
@@ -690,7 +726,7 @@ class AuthController {
 
       res.status(200).json({
         success: true,
-        message: 'MFA code has been resent'
+        message: 'MFA code has been resent to your email'
       });
     } catch (error) {
       logger.logError(error, { 
@@ -709,32 +745,30 @@ class AuthController {
     try {
       const userId = req.user.id;
 
-      // Vérifier que MFA n'est pas déjà activé
-      const user = await userService.getUserById(userId);
+      // Check if MFA already enabled
+      const user = await pool.query(
+        'SELECT mfa_enabled FROM users WHERE id = $1',
+        [userId]
+      );
 
-      if (user.mfa_enabled) {
+      if (user.rows[0]?.mfa_enabled) {
         return res.status(400).json({
           success: false,
           error: 'MFA is already enabled'
         });
       }
 
-      // Générer un secret MFA (normalement avec speakeasy)
-      // Pour cette démo, on génère un secret aléatoire
+      // Generate MFA secret
       const crypto = require('crypto');
       const mfaSecret = crypto.randomBytes(20).toString('hex');
 
-      // TODO: Générer un QR code pour l'app d'authentification
-      // const qrCode = await generateQRCode(mfaSecret);
-
-      // Sauvegarder le secret (temporairement, en attente de vérification)
+      // Store temporarily in Redis (10 minutes)
       await redisClient.setEx(
         `mfa_setup:${userId}`,
-        600, // 10 minutes
+        600,
         mfaSecret
       );
 
-      // Log audit
       await auditService.logSecurityEvent({
         userId,
         event: 'MFA_SETUP_INITIATED',
@@ -750,8 +784,7 @@ class AuthController {
         message: 'MFA setup initiated',
         data: {
           secret: mfaSecret,
-          // qrCode: qrCode,
-          instructions: 'Scan the QR code with your authenticator app and enter the 6-digit code to complete setup'
+          instructions: 'Enter this secret in your authenticator app, then verify with the 6-digit code'
         }
       });
     } catch (error) {
@@ -763,11 +796,12 @@ class AuthController {
     }
   }
 
+
   /**
    * POST /api/auth/mfa/disable
    * Désactive l'authentification à deux facteurs
    */
-  async disableMFA(req, res, next) {
+ async disableMFA(req, res, next) {
     try {
       const userId = req.user.id;
       const { password, code } = req.body;
@@ -779,8 +813,20 @@ class AuthController {
         });
       }
 
-      // Récupérer l'utilisateur
-      const user = await userService.getUserById(userId);
+      // Get user with password
+      const userResult = await pool.query(
+        'SELECT password_hash, mfa_enabled, mfa_secret FROM users WHERE id = $1',
+        [userId]
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+
+      const user = userResult.rows[0];
 
       if (!user.mfa_enabled) {
         return res.status(400).json({
@@ -789,17 +835,9 @@ class AuthController {
         });
       }
 
-      // Vérifier le mot de passe
-      const userWithPassword = await pool.query(
-        'SELECT password_hash FROM users WHERE id = $1',
-        [userId]
-      );
-
+      // Verify password
       const bcrypt = require('bcryptjs');
-      const isValidPassword = await bcrypt.compare(
-        password,
-        userWithPassword.rows[0].password_hash
-      );
+      const isValidPassword = await bcrypt.compare(password, user.password_hash);
 
       if (!isValidPassword) {
         await auditService.logSecurityEvent({
@@ -818,10 +856,8 @@ class AuthController {
         });
       }
 
-      // Vérifier le code MFA
-      const isValidCode = /^\d{6}$/.test(code);
-
-      if (!isValidCode) {
+      // Verify MFA code format
+      if (!/^\d{6}$/.test(code)) {
         await auditService.logSecurityEvent({
           userId,
           event: 'MFA_DISABLE_FAILED',
@@ -834,11 +870,14 @@ class AuthController {
 
         return res.status(400).json({
           success: false,
-          error: 'Invalid MFA code'
+          error: 'Invalid MFA code format'
         });
       }
 
-      // Désactiver MFA
+      // In production, verify code with speakeasy
+      // For demo, accept any 6-digit code
+
+      // Disable MFA
       await pool.query(
         `UPDATE users 
          SET mfa_enabled = false, mfa_secret = NULL, updated_at = CURRENT_TIMESTAMP
@@ -846,7 +885,6 @@ class AuthController {
         [userId]
       );
 
-      // Log audit
       await auditService.logSecurityEvent({
         userId,
         event: 'MFA_DISABLED',
@@ -878,14 +916,27 @@ class AuthController {
     try {
       const userId = req.user.id;
 
-      // Récupérer l'utilisateur
-      const user = await userService.getUserById(userId);
+      // Get user MFA status
+      const result = await pool.query(
+        'SELECT mfa_enabled FROM users WHERE id = $1',
+        [userId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+
+      // Check if setup is pending
+      const setupPending = await redisClient.exists(`mfa_setup:${userId}`);
 
       res.status(200).json({
         success: true,
         data: {
-          mfaEnabled: user.mfa_enabled,
-          setupPending: !user.mfa_enabled && await redisClient.exists(`mfa_setup:${userId}`)
+          mfaEnabled: result.rows[0].mfa_enabled,
+          setupPending: setupPending === 1
         }
       });
     } catch (error) {
@@ -896,8 +947,6 @@ class AuthController {
       next(error);
     }
   }
-  // backend/src/controllers/AuthController.js - ADD THESE METHODS
-
 /**
  * POST /api/auth/mfa/enable
  * Initiate MFA setup
@@ -947,86 +996,72 @@ async enableMFA(req, res, next) {
  * Complete MFA setup by verifying code
  */
 async verifyMFASetup(req, res, next) {
-  try {
-    const userId = req.user.id;
-    const { code } = req.body;
+    try {
+      const userId = req.user.id;
+      const { code } = req.body;
 
-    if (!code) {
-      return res.status(400).json({
-        success: false,
-        error: 'Verification code is required'
+      if (!code || !/^\d{6}$/.test(code)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Valid 6-digit code is required'
+        });
+      }
+
+      // Get pending secret from Redis
+      const mfaSecret = await redisClient.get(`mfa_setup:${userId}`);
+      
+      if (!mfaSecret) {
+        return res.status(400).json({
+          success: false,
+          error: 'MFA setup expired. Please start again.'
+        });
+      }
+
+      // In production, verify with speakeasy or similar
+      // For demo, accept any 6-digit code
+      const isValidCode = /^\d{6}$/.test(code);
+
+      if (!isValidCode) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid MFA code'
+        });
+      }
+
+      // Save MFA secret to database
+      await pool.query(
+        `UPDATE users 
+         SET mfa_enabled = true, mfa_secret = $1, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [mfaSecret, userId]
+      );
+
+      // Clean up Redis
+      await redisClient.del(`mfa_setup:${userId}`);
+
+      await auditService.logSecurityEvent({
+        userId,
+        event: 'MFA_ENABLED',
+        severity: 'info',
+        details: {
+          timestamp: new Date().toISOString()
+        },
+        ipAddress: req.ip
       });
-    }
 
-    await authService.verifyMFASetup(userId, code);
-
-    // Log audit
-    await auditService.logSecurityEvent({
-      userId,
-      event: 'MFA_ENABLED',
-      severity: 'info',
-      ipAddress: req.ip
-    });
-
-    res.status(200).json({
-      success: true,
-      message: 'MFA enabled successfully'
-    });
-  } catch (error) {
-    logger.logError(error, { 
-      context: 'Verify MFA Setup',
-      userId: req.user?.id 
-    });
-    
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Verification failed'
-    });
-  }
-}
-
-/**
- * POST /api/auth/mfa/disable
- * Disable MFA
- */
-async disableMFA(req, res, next) {
-  try {
-    const userId = req.user.id;
-    const { password, code } = req.body;
-
-    if (!password || !code) {
-      return res.status(400).json({
-        success: false,
-        error: 'Password and MFA code are required'
+      res.status(200).json({
+        success: true,
+        message: 'Two-factor authentication enabled successfully'
       });
+    } catch (error) {
+      logger.logError(error, { 
+        context: 'Verify MFA Setup',
+        userId: req.user?.id 
+      });
+      next(error);
     }
-
-    await authService.disableMFA(userId, password, code);
-
-    // Log audit
-    await auditService.logSecurityEvent({
-      userId,
-      event: 'MFA_DISABLED',
-      severity: 'warning',
-      ipAddress: req.ip
-    });
-
-    res.status(200).json({
-      success: true,
-      message: 'MFA disabled successfully'
-    });
-  } catch (error) {
-    logger.logError(error, { 
-      context: 'Disable MFA',
-      userId: req.user?.id 
-    });
-    
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Failed to disable MFA'
-    });
   }
-}
+
 
 /**
  * GET /api/auth/mfa/status
