@@ -30,7 +30,239 @@ class AuthController {
     this.disableMFA = this.disableMFA.bind(this);
     this.getMFAStatus = this.getMFAStatus.bind(this);
   }
+// backend/src/controllers/AuthController.js - Fixed MFA Enable Method
 
+/**
+ * POST /api/auth/mfa/enable
+ * Initiate MFA setup by sending verification code to user's email
+ */
+async enableMFA(req, res, next) {
+  try {
+    const userId = req.user.id;
+
+    // Check if MFA already enabled
+    const user = await pool.query(
+      'SELECT mfa_enabled, email, first_name, last_name FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (user.rows[0]?.mfa_enabled) {
+      return res.status(400).json({
+        success: false,
+        error: 'MFA is already enabled'
+      });
+    }
+
+    const userData = user.rows[0];
+
+    // ✅ Send verification code to user's email
+    await mfaService.sendMFACode(
+      userId,
+      userData.email,
+      `${userData.first_name} ${userData.last_name}`
+    );
+
+    await auditService.logSecurityEvent({
+      userId,
+      event: 'MFA_SETUP_INITIATED',
+      severity: 'info',
+      details: {
+        timestamp: new Date().toISOString()
+      },
+      ipAddress: req.ip
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Verification code sent to your email',
+      data: {
+        email: userData.email.replace(/(.{2}).*(@.*)/, '$1***$2'), // Masked
+        expiresIn: 600 // 10 minutes
+      }
+    });
+  } catch (error) {
+    logger.logError(error, { 
+      context: 'Enable MFA',
+      userId: req.user?.id 
+    });
+    next(error);
+  }
+}
+
+/**
+ * POST /api/auth/mfa/verify-setup
+ * Complete MFA setup by verifying code sent to email
+ */
+async verifyMFASetup(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const { code } = req.body;
+
+    if (!code || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Valid 6-digit code is required'
+      });
+    }
+
+    // ✅ Verify the code sent to email
+    const verification = await mfaService.verifyMFACode(userId, code);
+    
+    if (!verification.valid) {
+      return res.status(400).json({
+        success: false,
+        error: verification.error || 'Invalid MFA code'
+      });
+    }
+
+    // ✅ Enable MFA in database
+    await pool.query(
+      `UPDATE users 
+       SET mfa_enabled = true, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1`,
+      [userId]
+    );
+
+    await auditService.logSecurityEvent({
+      userId,
+      event: 'MFA_ENABLED',
+      severity: 'info',
+      details: {
+        method: 'email',
+        timestamp: new Date().toISOString()
+      },
+      ipAddress: req.ip
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Two-factor authentication enabled successfully'
+    });
+  } catch (error) {
+    logger.logError(error, { 
+      context: 'Verify MFA Setup',
+      userId: req.user?.id 
+    });
+    next(error);
+  }
+}
+
+/**
+ * POST /api/auth/mfa/disable
+ * Disable MFA (requires password + current MFA code)
+ */
+async disableMFA(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const { password, code } = req.body;
+
+    if (!password || !code) {
+      return res.status(400).json({
+        success: false,
+        error: 'Password and MFA code are required'
+      });
+    }
+
+    // Get user
+    const userResult = await pool.query(
+      'SELECT password_hash, mfa_enabled, email, first_name, last_name FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    if (!user.mfa_enabled) {
+      return res.status(400).json({
+        success: false,
+        error: 'MFA is not enabled'
+      });
+    }
+
+    // Verify password
+    const bcrypt = require('bcryptjs');
+    const isValidPassword = await bcrypt.compare(password, user.password_hash);
+
+    if (!isValidPassword) {
+      await auditService.logSecurityEvent({
+        userId,
+        event: 'MFA_DISABLE_FAILED',
+        severity: 'warning',
+        details: {
+          reason: 'Invalid password'
+        },
+        ipAddress: req.ip
+      });
+
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid password'
+      });
+    }
+
+    // ✅ Send one-time verification code to confirm disable
+    await mfaService.sendMFACode(
+      userId,
+      user.email,
+      `${user.first_name} ${user.last_name}`
+    );
+
+    // ✅ Verify the code
+    const verification = await mfaService.verifyMFACode(userId, code);
+    
+    if (!verification.valid) {
+      await auditService.logSecurityEvent({
+        userId,
+        event: 'MFA_DISABLE_FAILED',
+        severity: 'warning',
+        details: {
+          reason: 'Invalid MFA code'
+        },
+        ipAddress: req.ip
+      });
+
+      return res.status(400).json({
+        success: false,
+        error: verification.error || 'Invalid MFA code'
+      });
+    }
+
+    // Disable MFA
+    await pool.query(
+      `UPDATE users 
+       SET mfa_enabled = false, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1`,
+      [userId]
+    );
+
+    await auditService.logSecurityEvent({
+      userId,
+      event: 'MFA_DISABLED',
+      severity: 'warning',
+      details: {
+        timestamp: new Date().toISOString()
+      },
+      ipAddress: req.ip
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'MFA has been disabled successfully'
+    });
+  } catch (error) {
+    logger.logError(error, { 
+      context: 'Disable MFA',
+      userId: req.user?.id 
+    });
+    next(error);
+  }
+}
   /**
    * POST /api/auth/register
    * Inscription d'un nouvel utilisateur
@@ -106,107 +338,124 @@ class AuthController {
    * POST /api/auth/login
    * Connexion utilisateur
    */
-   async login(req, res, next) {
-    try {
-      const { email, password, rememberMe = false } = req.body;
-      const ipAddress = req.ip;
-      const userAgent = req.get('user-agent');
+ /**
+ * POST /api/auth/login
+ * Connexion utilisateur - FIXED VERSION
+ */
+async login(req, res, next) {
+  try {
+    const { email, password, rememberMe = false } = req.body;
+    const ipAddress = req.ip;
+    const userAgent = req.get('user-agent');
 
+    await auditService.logAction({
+      action: 'LOGIN_ATTEMPT',
+      resourceType: 'user',
+      eventType: 'authentication',
+      severity: 'info',
+      ipAddress,
+      userAgent,
+      requestBody: { email }
+    });
+
+    // Authenticate user
+    const result = await authService.login(email, password, ipAddress);
+
+    // ✅ FIX: Access user from result.user, not from undefined 'user' variable
+    const user = result.user;
+
+    // Create session
+    const session = await sessionService.createSession({
+      userId: user.id,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      ipAddress,
+      userAgent,
+      mfaVerified: !user.mfaEnabled  // ✅ FIX: Use user from result
+    });
+
+    // ✅ FIX: Check if MFA is enabled using result.user
+    if (user.mfaEnabled) {
+      // Send MFA code by email
+      await mfaService.sendMFACode(
+        user.id,
+        user.email,
+        `${user.firstName} ${user.lastName}`
+      );
+      
       await auditService.logAction({
-        action: 'LOGIN_ATTEMPT',
-        resourceType: 'user',
-        eventType: 'authentication',
-        severity: 'info',
-        ipAddress,
-        userAgent,
-        requestBody: { email }
-      });
-
-      // Authenticate user
-      const result = await authService.login(email, password, ipAddress);
-
-      // Create session
-      const session = await sessionService.createSession({
-        userId: result.user.id,
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        ipAddress,
-        userAgent,
-        mfaVerified: !result.user.mfaEnabled
-      });
-
-      // ✅ If MFA is enabled, send code and require verification
-      if (user.mfa_enabled) {
-  // Send MFA code by email
-  await mfaService.sendMFACode(
-    user.id,
-    user.email,
-    `${user.first_name} ${user.last_name}`
-  );
-  await auditService.logAction({
-          userId: result.user.id,
-          sessionId: session.sessionId,
-          action: 'MFA_CODE_SENT',
-          resourceType: 'user',
-          eventType: 'authentication',
-          severity: 'info',
-          ipAddress
-        });
- return res.status(200).json({
-    success: true,
-    requiresMfa: true,
-    message: 'MFA code sent to your email',
-    data: {
-      sessionId: session.sessionId,
-      email: user.email.replace(/(.{2}).*(@.*)/, '$1***$2') // Masked
-    }
-  });
-}
-      // ✅ No MFA required, complete login
-      await auditService.logAction({
-        userId: result.user.id,
+        userId: user.id,
         sessionId: session.sessionId,
-        action: 'LOGIN_SUCCESS',
+        action: 'MFA_CODE_SENT',
         resourceType: 'user',
-        resourceId: result.user.id,
         eventType: 'authentication',
         severity: 'info',
-        ipAddress,
-        userAgent
+        ipAddress
       });
 
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
-        message: 'Login successful',
+        requiresMfa: true,
+        message: 'MFA code sent to your email',
         data: {
-          user: result.user,
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
           sessionId: session.sessionId,
-          expiresAt: session.expiresAt
+          email: user.email.replace(/(.{2}).*(@.*)/, '$1***$2') // Masked
         }
       });
-    } catch (error) {
-      logger.logError(error, { 
-        context: 'Login',
-        email: req.body.email,
-        ip: req.ip 
-      });
-
-      await auditService.logSecurityEvent({
-        event: 'LOGIN_FAILED',
-        severity: 'warning',
-        details: {
-          email: req.body.email,
-          reason: error.message
-        },
-        ipAddress: req.ip,
-        userAgent: req.get('user-agent')
-      });
-
-      next(error);
     }
+
+    // ✅ No MFA required, complete login
+    await auditService.logAction({
+      userId: user.id,
+      sessionId: session.sessionId,
+      action: 'LOGIN_SUCCESS',
+      resourceType: 'user',
+      resourceId: user.id,
+      eventType: 'authentication',
+      severity: 'info',
+      ipAddress,
+      userAgent
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role
+        },
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        sessionId: session.sessionId,
+        expiresAt: session.expiresAt
+      }
+    });
+  } catch (error) {
+    logger.logError(error, { 
+      context: 'Login',
+      email: req.body.email,
+      ip: req.ip 
+    });
+
+    await auditService.logSecurityEvent({
+      event: 'LOGIN_FAILED',
+      severity: 'warning',
+      details: {
+        email: req.body.email,
+        reason: error.message
+      },
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
+    next(error);
   }
+}
 
   /**
    * POST /api/auth/logout
@@ -738,173 +987,9 @@ class AuthController {
    * POST /api/auth/mfa/enable
    * Active l'authentification à deux facteurs
    */
-  async enableMFA(req, res, next) {
-    try {
-      const userId = req.user.id;
+  
 
-      // Check if MFA already enabled
-      const user = await pool.query(
-        'SELECT mfa_enabled FROM users WHERE id = $1',
-        [userId]
-      );
-
-      if (user.rows[0]?.mfa_enabled) {
-        return res.status(400).json({
-          success: false,
-          error: 'MFA is already enabled'
-        });
-      }
-
-      // Generate MFA secret
-      const crypto = require('crypto');
-      const mfaSecret = crypto.randomBytes(20).toString('hex');
-
-      // Store temporarily in Redis (10 minutes)
-      await redisClient.setEx(
-        `mfa_setup:${userId}`,
-        600,
-        mfaSecret
-      );
-
-      await auditService.logSecurityEvent({
-        userId,
-        event: 'MFA_SETUP_INITIATED',
-        severity: 'info',
-        details: {
-          timestamp: new Date().toISOString()
-        },
-        ipAddress: req.ip
-      });
-
-      res.status(200).json({
-        success: true,
-        message: 'MFA setup initiated',
-        data: {
-          secret: mfaSecret,
-          instructions: 'Enter this secret in your authenticator app, then verify with the 6-digit code'
-        }
-      });
-    } catch (error) {
-      logger.logError(error, { 
-        context: 'Enable MFA',
-        userId: req.user?.id 
-      });
-      next(error);
-    }
-  }
-
-
-  /**
-   * POST /api/auth/mfa/disable
-   * Désactive l'authentification à deux facteurs
-   */
- async disableMFA(req, res, next) {
-    try {
-      const userId = req.user.id;
-      const { password, code } = req.body;
-
-      if (!password || !code) {
-        return res.status(400).json({
-          success: false,
-          error: 'Password and MFA code are required'
-        });
-      }
-
-      // Get user with password
-      const userResult = await pool.query(
-        'SELECT password_hash, mfa_enabled, mfa_secret FROM users WHERE id = $1',
-        [userId]
-      );
-
-      if (userResult.rows.length === 0) {
-        return res.status(404).json({
-          success: false,
-          error: 'User not found'
-        });
-      }
-
-      const user = userResult.rows[0];
-
-      if (!user.mfa_enabled) {
-        return res.status(400).json({
-          success: false,
-          error: 'MFA is not enabled'
-        });
-      }
-
-      // Verify password
-      const bcrypt = require('bcryptjs');
-      const isValidPassword = await bcrypt.compare(password, user.password_hash);
-
-      if (!isValidPassword) {
-        await auditService.logSecurityEvent({
-          userId,
-          event: 'MFA_DISABLE_FAILED',
-          severity: 'warning',
-          details: {
-            reason: 'Invalid password'
-          },
-          ipAddress: req.ip
-        });
-
-        return res.status(401).json({
-          success: false,
-          error: 'Invalid password'
-        });
-      }
-
-      // Verify MFA code format
-      if (!/^\d{6}$/.test(code)) {
-        await auditService.logSecurityEvent({
-          userId,
-          event: 'MFA_DISABLE_FAILED',
-          severity: 'warning',
-          details: {
-            reason: 'Invalid MFA code'
-          },
-          ipAddress: req.ip
-        });
-
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid MFA code format'
-        });
-      }
-
-      // In production, verify code with speakeasy
-      // For demo, accept any 6-digit code
-
-      // Disable MFA
-      await pool.query(
-        `UPDATE users 
-         SET mfa_enabled = false, mfa_secret = NULL, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1`,
-        [userId]
-      );
-
-      await auditService.logSecurityEvent({
-        userId,
-        event: 'MFA_DISABLED',
-        severity: 'warning',
-        details: {
-          timestamp: new Date().toISOString()
-        },
-        ipAddress: req.ip
-      });
-
-      res.status(200).json({
-        success: true,
-        message: 'MFA has been disabled successfully'
-      });
-    } catch (error) {
-      logger.logError(error, { 
-        context: 'Disable MFA',
-        userId: req.user?.id 
-      });
-      next(error);
-    }
-  }
-
+  
   /**
    * GET /api/auth/mfa/status
    * Récupère le statut MFA de l'utilisateur
@@ -992,72 +1077,6 @@ async enableMFA(req, res, next) {
  * POST /api/auth/mfa/verify-setup
  * Complete MFA setup by verifying code
  */
-async verifyMFASetup(req, res, next) {
-    try {
-      const userId = req.user.id;
-      const { code } = req.body;
-
-      if (!code || !/^\d{6}$/.test(code)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Valid 6-digit code is required'
-        });
-      }
-
-      // Get pending secret from Redis
-      const mfaSecret = await redisClient.get(`mfa_setup:${userId}`);
-      
-      if (!mfaSecret) {
-        return res.status(400).json({
-          success: false,
-          error: 'MFA setup expired. Please start again.'
-        });
-      }
-
-      // In production, verify with speakeasy or similar
-      // For demo, accept any 6-digit code
-      const isValidCode = /^\d{6}$/.test(code);
-
-      if (!isValidCode) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid MFA code'
-        });
-      }
-
-      // Save MFA secret to database
-      await pool.query(
-        `UPDATE users 
-         SET mfa_enabled = true, mfa_secret = $1, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2`,
-        [mfaSecret, userId]
-      );
-
-      // Clean up Redis
-      await redisClient.del(`mfa_setup:${userId}`);
-
-      await auditService.logSecurityEvent({
-        userId,
-        event: 'MFA_ENABLED',
-        severity: 'info',
-        details: {
-          timestamp: new Date().toISOString()
-        },
-        ipAddress: req.ip
-      });
-
-      res.status(200).json({
-        success: true,
-        message: 'Two-factor authentication enabled successfully'
-      });
-    } catch (error) {
-      logger.logError(error, { 
-        context: 'Verify MFA Setup',
-        userId: req.user?.id 
-      });
-      next(error);
-    }
-  }
 
 
 /**

@@ -99,16 +99,12 @@ class AuthService {
 /**
  * Verify MFA code during login
  */
-async verifyMFALogin(sessionId: string, code: string): Promise<ApiResponse<LoginResponse>> {
-  return api.post('/auth/verify-mfa', { sessionId, code });
-}
+
 
 /**
  * Resend MFA code
  */
-async resendMFACode(sessionId: string): Promise<ApiResponse<{ message: string }>> {
-  return api.post('/auth/resend-mfa', { sessionId });
-}
+
   // Récupérer les sessions actives
   async getSessions(): Promise<ApiResponse<{ sessions: Session[] }>> {
     return api.get('/auth/sessions');
@@ -124,24 +120,14 @@ async resendMFACode(sessionId: string): Promise<ApiResponse<{ message: string }>
     return api.delete('/auth/sessions');
   }
 // Enable MFA
-  async enableMFA(): Promise<ApiResponse<EnableMFAResponse>> {
-    return api.post('/auth/mfa/enable');
-  }
-
+ 
   // Verify MFA setup code
-  async verifyMFACode(code: string): Promise<ApiResponse<void>> {
-    return api.post('/auth/mfa/verify-setup', { code });
-  }
+  
 
-  // Disable MFA
-  async disableMFA(data: DisableMFARequest): Promise<ApiResponse<void>> {
-    return api.post('/auth/mfa/disable', data);
-  }
+  
 
   // Get MFA Status
-  async getMFAStatus(): Promise<ApiResponse<{ mfaEnabled: boolean; setupPending: boolean }>> {
-    return api.get('/auth/mfa/status');
-  }
+  
   // Vérifier si l'utilisateur est connecté
   isAuthenticated(): boolean {
     const token = localStorage.getItem('accessToken');
@@ -159,6 +145,49 @@ async resendMFACode(sessionId: string): Promise<ApiResponse<{ message: string }>
       return null;
     }
   }
+  // frontend/src/services/auth.service.ts - MFA Methods Fixed
+
+/**
+ * Enable MFA - Sends verification code to user's email
+ */
+async enableMFA(): Promise<ApiResponse<{ email: string; expiresIn: number }>> {
+  return api.post('/auth/mfa/enable');
+}
+
+/**
+ * Verify MFA setup code (sent to email during enableMFA)
+ */
+async verifyMFACode(code: string): Promise<ApiResponse<void>> {
+  return api.post('/auth/mfa/verify-setup', { code });
+}
+
+/**
+ * Disable MFA (requires password + verification code sent to email)
+ */
+async disableMFA(data: { password: string; code: string }): Promise<ApiResponse<void>> {
+  return api.post('/auth/mfa/disable', data);
+}
+
+/**
+ * Get MFA Status
+ */
+async getMFAStatus(): Promise<ApiResponse<{ mfaEnabled: boolean }>> {
+  return api.get('/auth/mfa/status');
+}
+
+/**
+ * Verify MFA code during login (after credentials are correct)
+ */
+async verifyMFALogin(sessionId: string, code: string): Promise<ApiResponse<LoginResponse>> {
+  return api.post('/auth/verify-mfa', { sessionId, code });
+}
+
+/**
+ * Resend MFA code during login
+ */
+async resendMFACode(sessionId: string): Promise<ApiResponse<{ message: string }>> {
+  return api.post('/auth/resend-mfa', { sessionId });
+}
 }
 
 const authService = new AuthService();

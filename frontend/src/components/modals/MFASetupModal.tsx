@@ -1,29 +1,23 @@
+// frontend/src/components/modals/MFASetupModal.tsx - FIXED VERSION
 import React, { useState } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { X, Copy, Check } from 'lucide-react';
+import { X, Mail } from 'lucide-react';
 
 interface MFASetupModalProps {
   isOpen: boolean;
   onClose: () => void;
-  secret: string;
+  email: string;
   onVerify: (code: string) => Promise<void>;
 }
 
-export default function MFASetupModal({ isOpen, onClose, secret, onVerify }: MFASetupModalProps) {
+export default function MFASetupModal({ isOpen, onClose, email, onVerify }: MFASetupModalProps) {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
-
-  const handleCopySecret = () => {
-    navigator.clipboard.writeText(secret);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const handleVerify = async () => {
     if (code.length !== 6) {
@@ -36,6 +30,7 @@ export default function MFASetupModal({ isOpen, onClose, secret, onVerify }: MFA
 
     try {
       await onVerify(code);
+      setCode('');
       onClose();
     } catch (err: any) {
       setError(err.message || 'Verification failed');
@@ -61,40 +56,18 @@ export default function MFASetupModal({ isOpen, onClose, secret, onVerify }: MFA
         {/* Instructions */}
         <div className="space-y-4 mb-6">
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-900 font-medium mb-2">Setup Instructions:</p>
-            <ol className="text-sm text-blue-800 space-y-2 list-decimal list-inside">
-              <li>Install an authenticator app (Google Authenticator, Authy, etc.)</li>
-              <li>Add a new account in the app</li>
-              <li>Enter the secret key below or scan the QR code</li>
-              <li>Enter the 6-digit code from your app to verify</li>
-            </ol>
-          </div>
-
-          {/* Secret Key */}
-          <div>
-            <Label>Your Secret Key</Label>
-            <div className="flex items-center gap-2 mt-2">
-              <Input
-                value={secret}
-                readOnly
-                className="font-mono text-sm bg-gray-50"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCopySecret}
-                className="flex-shrink-0"
-              >
-                {copied ? (
-                  <Check className="w-4 h-4 text-green-600" />
-                ) : (
-                  <Copy className="w-4 h-4" />
-                )}
-              </Button>
+            <div className="flex items-start gap-3">
+              <Mail className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-blue-900">Verification Code Sent</p>
+                <p className="text-sm text-blue-800 mt-1">
+                  We've sent a 6-digit code to <strong>{email}</strong>
+                </p>
+                <p className="text-xs text-blue-700 mt-2">
+                  Check your inbox (and spam folder). Enter the code below to enable MFA.
+                </p>
+              </div>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Keep this secret safe. You'll need it if you lose access to your authenticator app.
-            </p>
           </div>
 
           {/* Verification Code */}
@@ -117,6 +90,13 @@ export default function MFASetupModal({ isOpen, onClose, secret, onVerify }: MFA
               <p className="text-sm text-red-700">{error}</p>
             </div>
           )}
+
+          {/* Info */}
+          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <p className="text-xs text-gray-600">
+              ℹ️ After enabling MFA, you'll need to enter a code sent to your email every time you log in.
+            </p>
+          </div>
         </div>
 
         {/* Actions */}
