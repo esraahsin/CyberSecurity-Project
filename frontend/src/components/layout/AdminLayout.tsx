@@ -90,7 +90,7 @@ export default function AdminLayout() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-white truncate">
-                  {user?.first_name} {user?.last_name}
+                  {user?.firstName} {user?.lastName}
                 </p>
                 <p className="text-xs text-gray-400 truncate">Administrator</p>
               </div>

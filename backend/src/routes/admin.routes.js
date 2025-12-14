@@ -7,6 +7,7 @@ const logger = require('../utils/logger');
 const { authenticateToken, requireRole } = require('../middleware/auth.middleware');
 const { sensitiveOperationRateLimiter } = require('../middleware/security.middleware');
 const { validateIdParam, validatePagination, validateDateRange } = require('../middleware/validation.middleware');
+const SettingsController = require('../controllers/SettingsController');
 
 // All admin routes require authentication + admin role
 router.use(authenticateToken);
@@ -311,7 +312,11 @@ router.get('/users', validatePagination, async (req, res, next) => {
     next(error);
   }
 });
-
+router.get('/settings', SettingsController.getSettings);
+router.get('/settings/:category', SettingsController.getSettingsByCategory);
+router.put('/settings', sensitiveOperationRateLimiter(), SettingsController.updateSettings);
+router.post('/settings/reset', sensitiveOperationRateLimiter(), SettingsController.resetToDefaults);
+router.post('/settings/apply', SettingsController.applySettings);
 // GET /api/admin/accounts - List all accounts
 router.get('/accounts', validatePagination, async (req, res, next) => {
   try {

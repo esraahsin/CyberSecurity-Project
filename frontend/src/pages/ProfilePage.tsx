@@ -18,17 +18,25 @@ export default function ProfilePage() {
   const [success, setSuccess] = useState('');
 
   // Profile form
-  const [profileData, setProfileData] = useState<{
-    firstName: string;
-    lastName: string;
-    phoneNumber: string;
-    email: string;
-  }>({
-    firstName: String(user?.firstName || ''),
-    lastName: String(user?.lastName || ''),
-    phoneNumber: String(user?.phoneNumber || ''),
-    email: String(user?.email || ''),
-  });
+ 
+const [profileData, setProfileData] = useState({
+  firstName: '',
+  lastName: '',
+  phoneNumber: '',
+  email: '',
+});
+
+useEffect(() => {
+  if (user) {
+    console.log('👤 User data loaded:', user); // ✅ Debug log
+    setProfileData({
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+      phoneNumber: user.phoneNumber || '',
+      email: user.email || '',
+    });
+  }
+}, [user]);
 
   // Password form
   const [passwordData, setPasswordData] = useState({

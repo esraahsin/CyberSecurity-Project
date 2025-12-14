@@ -3,25 +3,20 @@
 import { ReactNode } from "react";
 
 export interface User {
-  firstName: ReactNode;
-  lastName: ReactNode;
-  accountStatus(accountStatus: any): unknown;
-  createdAt: string | number | Date;
   id: number;
   email: string;
   username: string;
-  first_name: string;
-  last_name: string;
-  phoneNumber?: string;
-  dateOfBirth?: string;
-  mfaEnabled: boolean;
-  emailVerified: boolean;
+  firstName: string;        // ✅ camelCase
+  lastName: string;         // ✅ camelCase
+  phoneNumber?: string;     // ✅ camelCase
+  dateOfBirth?: string;     // ✅ camelCase
+  mfaEnabled: boolean;      // ✅ camelCase
+  emailVerified: boolean;   // ✅ camelCase
   account_status: 'active' | 'suspended' | 'locked' | 'closed';
   role: 'user' | 'admin' | 'moderator';
-  created_at: string;
-  last_login?: string;
+  createdAt: string;        // ✅ camelCase
+  lastLogin?: string;       // ✅ camelCase
 }
-
 export interface Account {
   id: number;
   accountNumber: string;

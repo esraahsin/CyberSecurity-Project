@@ -32,28 +32,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Charger l'utilisateur au démarrage
   useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const token = localStorage.getItem('accessToken');
-        if (!token) {
-          setUser(null);
-          return;
-        }
+    
+const loadUser = async () => {
+  try {
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      setUser(null);
+      return;
+    }
 
-        const response = await authService.getProfile();
-        if (response.success && response.data) {
-          setUser(response.data.user);
-        } else {
-          // Token invalide, nettoyer
-          clearAuthData();
-        }
-      } catch (error) {
-        console.error('Failed to load user:', error);
-        clearAuthData();
-      } finally {
-        setLoading(false);
-      }
-    };
+    const response = await authService.getProfile();
+    console.log('📥 Profile response:', response); // ✅ Debug log
+    
+    if (response.success && response.data) {
+      console.log('✅ User loaded:', response.data.user); // ✅ Debug log
+      setUser(response.data.user);
+    } else {
+      clearAuthData();
+    }
+  } catch (error) {
+    console.error('❌ Failed to load user:', error);
+    clearAuthData();
+  } finally {
+    setLoading(false);
+  }
+};
+
 
     loadUser();
   }, []);

@@ -13,22 +13,33 @@ class UserService {
    * Récupère un utilisateur par ID
    */
   async getUserById(userId) {
-    const result = await pool.query(`
-      SELECT 
-        id, email, username, first_name, last_name,
-        phone_number, date_of_birth, mfa_enabled,
-        email_verified, account_status, role,
-        created_at, last_login, last_password_change
-      FROM users
-      WHERE id = $1 AND account_status != 'closed'
-    `, [userId]);
-    
-    if (result.rows.length === 0) {
-      throw new Error('User not found');
-    }
-    
-    return result.rows[0];
+  const result = await pool.query(`
+    SELECT 
+      id, email, username, first_name, last_name,
+      phone_number, date_of_birth, mfa_enabled,
+      email_verified, account_status, role,
+      created_at, last_login, last_password_change
+    FROM users
+    WHERE id = $1 AND account_status != 'closed'
+  `, [userId]);
+  
+  if (result.rows.length === 0) {
+    throw new Error('User not found');
   }
+  
+  const user = result.rows[0];
+  
+  // ✅ FIX: Log pour debug
+  console.log('📊 User data from DB:', {
+    id: user.id,
+    email: user.email,
+    mfa_enabled: user.mfa_enabled,
+    phone_number: user.phone_number,
+    date_of_birth: user.date_of_birth
+  });
+  
+  return user;
+}
 
   /**
    * Liste tous les utilisateurs avec pagination
@@ -91,46 +102,63 @@ class UserService {
   /**
    * Met à jour le profil utilisateur
    */
-  async updateProfile(userId, updates) {
-    const allowedFields = [
-      'first_name',
-      'last_name',
-      'phone_number',
-      'date_of_birth'
-    ];
-    
-    const validUpdates = {};
-    for (const field of allowedFields) {
-      if (updates[field] !== undefined) {
-        validUpdates[field] = updates[field];
-      }
+ async updateProfile(userId, updates) {
+  const allowedFields = [
+    'first_name',
+    'last_name',
+    'phone_number',
+    'date_of_birth'
+  ];
+  
+  const validUpdates = {};
+  
+  // ✅ FIX: Mapper camelCase vers snake_case
+  const fieldMapping = {
+    firstName: 'first_name',
+    lastName: 'last_name',
+    phoneNumber: 'phone_number',
+    dateOfBirth: 'date_of_birth'
+  };
+  
+  for (const [camelField, snakeField] of Object.entries(fieldMapping)) {
+    if (updates[camelField] !== undefined) {
+      validUpdates[snakeField] = updates[camelField];
     }
-    
-    if (Object.keys(validUpdates).length === 0) {
-      throw new Error('No valid fields to update');
-    }
-    
-    const fields = Object.keys(validUpdates);
-    const values = Object.values(validUpdates);
-    const setClause = fields.map((field, i) => `${field} = $${i + 1}`).join(', ');
-    
-    const query = `
-      UPDATE users
-      SET ${setClause}, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $${fields.length + 1}
-      RETURNING id, email, username, first_name, last_name, phone_number
-    `;
-    
-    const result = await pool.query(query, [...values, userId]);
-    
-    if (result.rows.length === 0) {
-      throw new Error('User not found');
-    }
-    
-    logger.info('Profile updated', { userId, fields });
-    
-    return result.rows[0];
   }
+  
+  // Aussi accepter les champs en snake_case (pour compatibilité)
+  for (const field of allowedFields) {
+    if (updates[field] !== undefined) {
+      validUpdates[field] = updates[field];
+    }
+  }
+  
+  if (Object.keys(validUpdates).length === 0) {
+    throw new Error('No valid fields to update');
+  }
+  
+  const fields = Object.keys(validUpdates);
+  const values = Object.values(validUpdates);
+  const setClause = fields.map((field, i) => `${field} = $${i + 1}`).join(', ');
+  
+  const query = `
+    UPDATE users
+    SET ${setClause}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = $${fields.length + 1}
+    RETURNING id, email, username, first_name, last_name, phone_number, 
+              date_of_birth, mfa_enabled, email_verified, account_status, role
+  `;
+  
+  const result = await pool.query(query, [...values, userId]);
+  
+  if (result.rows.length === 0) {
+    throw new Error('User not found');
+  }
+  
+  logger.info('Profile updated', { userId, fields });
+  
+  return result.rows[0];
+}
   
   /**
    * Change le mot de passe utilisateur

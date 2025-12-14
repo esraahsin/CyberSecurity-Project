@@ -567,15 +567,15 @@ async login(req, res, next) {
             email: user.email,
             username: user.username,
             firstName: user.first_name,
-            lastName: user.last_name,
-            phoneNumber: user.phone_number,
-            dateOfBirth: user.date_of_birth,
-            mfaEnabled: user.mfa_enabled,
-            emailVerified: user.email_verified,
-            accountStatus: user.account_status,
-            role: user.role,
-            createdAt: user.created_at,
-            lastLogin: user.last_login
+          lastName: user.last_name,
+          phoneNumber: user.phone_number,
+          dateOfBirth: user.date_of_birth,
+          mfaEnabled: user.mfa_enabled,
+          emailVerified: user.email_verified,
+          accountStatus: user.account_status,
+          role: user.role,
+          createdAt: user.created_at,
+          lastLogin: user.last_login
           },
           stats
         }
@@ -614,10 +614,24 @@ async login(req, res, next) {
       const updatedUser = await userService.updateProfile(userId, updates);
 
       res.status(200).json({
-        success: true,
-        message: 'Profile updated successfully',
-        data: updatedUser
-      });
+      success: true,
+      message: 'Profile updated successfully',
+      data: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        username: updatedUser.username,
+        firstName: updatedUser.first_name,
+        lastName: updatedUser.last_name,
+        phoneNumber: updatedUser.phone_number,
+        dateOfBirth: updatedUser.date_of_birth,
+        mfaEnabled: updatedUser.mfa_enabled,
+        emailVerified: updatedUser.email_verified,
+        accountStatus: updatedUser.account_status,
+        role: updatedUser.role,
+        createdAt: updatedUser.created_at,
+        lastLogin: updatedUser.last_login
+      }
+    });
     } catch (error) {
       logger.logError(error, { 
         context: 'Update Profile',

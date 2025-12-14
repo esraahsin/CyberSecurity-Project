@@ -166,7 +166,7 @@ export default function AdminUserDetailPage() {
         </Button>
         <div className="flex-1">
           <h1 className="text-3xl font-bold text-gray-900">
-            {user.first_name} {user.last_name}
+            {user.firstName} {user.lastName}
           </h1>
           <p className="text-gray-600 mt-1">{user.email}</p>
         </div>
@@ -220,7 +220,7 @@ export default function AdminUserDetailPage() {
               <div>
                 <p className="text-sm text-gray-600">Member Since</p>
                 <p className="text-lg font-bold text-gray-900 mt-2">
-                  {new Date(user.created_at).toLocaleDateString()}
+                  {new Date(user.createdAt).toLocaleDateString()}
                 </p>
               </div>
               <div className="bg-purple-100 p-3 rounded-lg">
@@ -271,13 +271,13 @@ export default function AdminUserDetailPage() {
             <div>
               <p className="text-sm text-gray-600">Last Login</p>
               <p className="text-base font-medium text-gray-900 mt-1">
-                {user.last_login ? new Date(user.last_login).toLocaleString() : 'Never'}
+                {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
               </p>
             </div>
             <div>
               <p className="text-sm text-gray-600">Created At</p>
               <p className="text-base font-medium text-gray-900 mt-1">
-                {new Date(user.created_at).toLocaleString()}
+                {new Date(user.createdAt).toLocaleString()}
               </p>
             </div>
           </div>

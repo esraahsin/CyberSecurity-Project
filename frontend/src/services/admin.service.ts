@@ -71,7 +71,18 @@ class AdminService {
 async listUsers(params?: PaginationParams & { status?: string; role?: string }): Promise<ApiResponse<PaginatedResponse<User>>> {
   return api.get('/admin/users', params); // ✅ CORRECT
 }
+// Add these methods to the AdminService class
+async getSettings(): Promise<ApiResponse<any>> {
+  return api.get('/admin/settings');
+}
 
+async updateSettings(updates: Record<string, any>): Promise<ApiResponse<any>> {
+  return api.put('/admin/settings', updates);
+}
+
+async resetSettings(): Promise<ApiResponse<{ message: string }>> {
+  return api.post('/admin/settings/reset');
+}
 
   async getUserById(userId: number): Promise<ApiResponse<{ user: User }>> {
     return api.get(`/users/${userId}`);
