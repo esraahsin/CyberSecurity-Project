@@ -98,6 +98,13 @@ async verifyMFASetup(req, res, next) {
     const userId = req.user.id;
     const { code } = req.body;
 
+    console.log('🔍 Verifying MFA setup code:', {
+      userId,
+      codeLength: code?.length,
+      codeFormat: /^\d{6}$/.test(code)
+    });
+
+    // Validate code format
     if (!code || !/^\d{6}$/.test(code)) {
       return res.status(400).json({
         success: false,
@@ -105,15 +112,18 @@ async verifyMFASetup(req, res, next) {
       });
     }
 
-    // ✅ Verify the code sent to email
+    // ✅ FIX: Use mfaService.verifyMFACode which checks the correct Redis key
     const verification = await mfaService.verifyMFACode(userId, code);
     
     if (!verification.valid) {
+      console.log('❌ MFA verification failed:', verification.error);
       return res.status(400).json({
         success: false,
         error: verification.error || 'Invalid MFA code'
       });
     }
+
+    console.log('✅ MFA code verified, enabling MFA in database');
 
     // ✅ Enable MFA in database
     await pool.query(
@@ -122,6 +132,8 @@ async verifyMFASetup(req, res, next) {
        WHERE id = $1`,
       [userId]
     );
+
+    console.log('✅ MFA enabled successfully for user:', userId);
 
     await auditService.logSecurityEvent({
       userId,
@@ -139,6 +151,7 @@ async verifyMFASetup(req, res, next) {
       message: 'Two-factor authentication enabled successfully'
     });
   } catch (error) {
+    console.error('❌ Verify MFA Setup Error:', error);
     logger.logError(error, { 
       context: 'Verify MFA Setup',
       userId: req.user?.id 
@@ -1177,77 +1190,6 @@ async getMFAStatus(req, res, next) {
 }
 // backend/src/controllers/AuthController.js
 
-/**
- * POST /api/auth/mfa/verify
- * Complete MFA setup by verifying the code
- */
-async verifyMFASetup(req, res, next) {
-  try {
-    const userId = req.user.id;
-    const { code } = req.body;
-
-    if (!code || !/^\d{6}$/.test(code)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Valid 6-digit code is required'
-      });
-    }
-
-    // Get pending secret from Redis
-    const mfaSecret = await redisClient.get(`mfa_setup:${userId}`);
-    
-    if (!mfaSecret) {
-      return res.status(400).json({
-        success: false,
-        error: 'MFA setup expired. Please start again.'
-      });
-    }
-
-    // In production, verify the code with speakeasy
-    // For now, accept any 6-digit code
-    const isValidCode = /^\d{6}$/.test(code);
-
-    if (!isValidCode) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid MFA code'
-      });
-    }
-
-    // Save MFA secret to database
-    await pool.query(
-      `UPDATE users 
-       SET mfa_enabled = true, mfa_secret = $1, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2`,
-      [mfaSecret, userId]
-    );
-
-    // Clean up Redis
-    await redisClient.del(`mfa_setup:${userId}`);
-
-    // Log audit
-    await auditService.logSecurityEvent({
-      userId,
-      event: 'MFA_ENABLED',
-      severity: 'info',
-      details: {
-        timestamp: new Date().toISOString()
-      },
-      ipAddress: req.ip
-    });
-
-    res.status(200).json({
-      success: true,
-      message: 'Two-factor authentication enabled successfully'
-    });
-  } catch (error) {
-    logger.logError(error, { 
-      context: 'Verify MFA Setup',
-      userId: req.user?.id 
-    });
-    next(error);
-  }
-}
 }
 // ✅ FIX: Exporter une instance avec les méthodes correctement liées
 module.exports = new AuthController();
