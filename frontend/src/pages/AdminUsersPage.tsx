@@ -7,6 +7,7 @@ import { Input } from '../components/ui/input';
 import { Search, Shield, Lock, Unlock, Key, Eye } from 'lucide-react';
 import adminService from '../services/admin.service';
 import { User } from '../types';
+import { cn } from "@/lib/utils";
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
