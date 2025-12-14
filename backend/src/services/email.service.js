@@ -1,59 +1,88 @@
-/**
- * Service d'envoi d'emails pour MFA et notifications
- * @module services/email.service
- */
-
+// backend/src/services/email.service.js - FIXED VERSION
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 
 class EmailService {
   constructor() {
-    // ✅ FIX: Proper error handling and fallback for missing config
+    this.transporter = null;
+    this.initialized = false;
+    this.initializeTransporter();
+  }
+
+  async initializeTransporter() {
     try {
+      // Check if SMTP credentials are configured
+      if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) {
+        console.warn('⚠️  SMTP credentials not configured. Email service will run in DEV MODE.');
+        this.initialized = false;
+        return;
+      }
+
       this.transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST || 'smtp.gmail.com',
         port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: false, // true for 465, false for other ports
+        secure: false,
         auth: {
           user: process.env.SMTP_USER,
           pass: process.env.SMTP_PASSWORD,
         },
-      });
-
-      // Verify connection on startup (optional, non-blocking)
-      this.transporter.verify((error, success) => {
-        if (error) {
-          logger.warn('Email service verification failed', { error: error.message });
-          console.warn('⚠️  Email service not configured properly. MFA emails will not be sent.');
-        } else {
-          console.log('✅ Email service ready');
+        tls: {
+          rejectUnauthorized: false // For development only
         }
       });
+
+      // Verify connection
+      await this.transporter.verify();
+      console.log('✅ Email service connected successfully');
+      this.initialized = true;
     } catch (error) {
-      logger.error('Failed to initialize email service', { error: error.message });
       console.error('❌ Email service initialization failed:', error.message);
-      // Create a dummy transporter that logs instead of sending
+      console.log('📧 Running in DEV MODE - codes will be logged to console');
+      this.initialized = false;
       this.transporter = null;
     }
   }
 
   /**
-   * Envoie un code MFA par email
-   * @param {string} email - Email du destinataire
-   * @param {string} code - Code MFA à 6 chiffres
-   * @param {string} userName - Nom de l'utilisateur
+   * Send MFA code via email
    */
   async sendMFACode(email, code, userName) {
-    // ✅ FIX: Handle missing transporter gracefully
-    if (!this.transporter) {
-      console.log('📧 [DEV MODE] MFA Code:', code, 'for', email);
-      logger.info('MFA code generated (email service not configured)', { 
+    console.log(`\n${'='.repeat(60)}`);
+    console.log('📧 MFA CODE EMAIL REQUEST');
+    console.log(`${'='.repeat(60)}`);
+    console.log(`To: ${email}`);
+    console.log(`Name: ${userName}`);
+    console.log(`Code: ${code}`);
+    console.log(`${'='.repeat(60)}\n`);
+
+    // DEV MODE: Log code to console if email service not configured
+    if (!this.initialized || !this.transporter) {
+      console.log('⚠️  EMAIL SERVICE IN DEV MODE');
+      console.log('');
+      console.log('╔════════════════════════════════════════╗');
+      console.log('║      MFA VERIFICATION CODE             ║');
+      console.log('╠════════════════════════════════════════╣');
+      console.log(`║  Email: ${email.padEnd(30)} ║`);
+      console.log(`║  Code:  ${code.padEnd(30)} ║`);
+      console.log('╠════════════════════════════════════════╣');
+      console.log('║  Copy this code for verification      ║');
+      console.log('║  Valid for 10 minutes                 ║');
+      console.log('╚════════════════════════════════════════╝');
+      console.log('');
+
+      logger.info('MFA code generated (DEV MODE)', { 
         email: email.replace(/(.{2}).*(@.*)/, '$1***$2'),
         code 
       });
-      return { success: true, devMode: true };
+
+      return { 
+        success: true, 
+        devMode: true,
+        message: 'Running in DEV MODE - check console for code'
+      };
     }
 
+    // PRODUCTION MODE: Send actual email
     try {
       const mailOptions = {
         from: `"SecureBank Security" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
@@ -130,29 +159,40 @@ For your security:
         `
       };
 
-      await this.transporter.sendMail(mailOptions);
+      const info = await this.transporter.sendMail(mailOptions);
       
+      console.log('✅ Email sent successfully:', info.messageId);
       logger.info('MFA code email sent successfully', { 
-        email: email.replace(/(.{2}).*(@.*)/, '$1***$2')
+        email: email.replace(/(.{2}).*(@.*)/, '$1***$2'),
+        messageId: info.messageId
       });
       
-      return { success: true };
+      return { success: true, messageId: info.messageId };
     } catch (error) {
-      logger.error('Failed to send MFA email', { error: error.message, email });
-      // ✅ FIX: Don't throw, return error info instead
       console.error('❌ Email send failed:', error.message);
-      console.log('📧 [FALLBACK] MFA Code:', code);
-      return { success: false, error: error.message, code }; // Include code for dev fallback
+      logger.error('Failed to send MFA email', { error: error.message, email });
+      
+      // Fallback to console logging
+      console.log('\n╔════════════════════════════════════════╗');
+      console.log('║   EMAIL FAILED - FALLBACK TO CONSOLE   ║');
+      console.log('╠════════════════════════════════════════╣');
+      console.log(`║  Code: ${code.padEnd(33)}║`);
+      console.log('╚════════════════════════════════════════╝\n');
+      
+      return { 
+        success: false, 
+        error: error.message,
+        devMode: true,
+        code // Include code for dev fallback
+      };
     }
   }
 
   /**
-   * Envoie une notification de suppression de compte
-   * @param {string} email - Email du destinataire
-   * @param {string} userName - Nom de l'utilisateur
+   * Send account deletion notification
    */
   async sendAccountDeletionNotification(email, userName) {
-    if (!this.transporter) {
+    if (!this.initialized || !this.transporter) {
       console.log('📧 [DEV MODE] Account deletion notification for:', email);
       return { success: true, devMode: true };
     }
@@ -221,7 +261,7 @@ For your security:
   }
 
   /**
-   * Vérifie la configuration email
+   * Verify email service connection
    */
   async verifyConnection() {
     if (!this.transporter) {

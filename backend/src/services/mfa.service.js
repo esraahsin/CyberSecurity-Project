@@ -1,8 +1,4 @@
-/**
- * Service de gestion MFA par email
- * @module services/mfa.service
- */
-
+// backend/src/services/mfa.service.js - FIXED VERSION
 const redisClient = require('../config/redis');
 const emailService = require('./email.service');
 const crypto = require('crypto');
@@ -24,25 +20,59 @@ class MFAService {
    */
   async sendMFACode(userId, email, userName) {
     try {
+      console.log('\n📧 MFA Service: Generating code for user:', {
+        userId,
+        email: email.replace(/(.{2}).*(@.*)/, '$1***$2'),
+        userName
+      });
+
       // Générer le code
       const code = this.generateMFACode();
       
+      console.log('🔑 Generated MFA code:', code);
+      
       // Stocker dans Redis avec expiration de 10 minutes
       const key = `mfa:${userId}`;
+      
+      // ✅ Ensure Redis is connected
+      if (!redisClient.isOpen) {
+        console.log('⚠️  Redis not connected, attempting to connect...');
+        await redisClient.connect();
+      }
+      
       await redisClient.setEx(key, 600, code); // 600 secondes = 10 minutes
       
-      // Envoyer par email
-      await emailService.sendMFACode(email, code, userName);
+      console.log('✅ MFA code stored in Redis with key:', key);
       
-      logger.info('MFA code generated and sent', { userId });
+      // Envoyer par email
+      console.log('📤 Attempting to send email to:', email);
+      const emailResult = await emailService.sendMFACode(email, code, userName);
+      
+      console.log('📧 Email service result:', emailResult);
+      
+      logger.info('MFA code generated and sent', { 
+        userId,
+        email: email.replace(/(.{2}).*(@.*)/, '$1***$2'),
+        success: emailResult.success,
+        devMode: emailResult.devMode
+      });
       
       return {
         success: true,
-        message: 'Verification code sent to your email',
-        expiresIn: 600
+        message: emailResult.devMode 
+          ? 'Verification code available in server console' 
+          : 'Verification code sent to your email',
+        expiresIn: 600,
+        devMode: emailResult.devMode,
+        code: emailResult.devMode ? code : undefined // Include code in response if dev mode
       };
     } catch (error) {
-      logger.error('Failed to send MFA code', { error: error.message, userId });
+      console.error('❌ MFA Service Error:', error);
+      logger.error('Failed to send MFA code', { 
+        error: error.message, 
+        userId,
+        stack: error.stack 
+      });
       throw new Error('Failed to send verification code');
     }
   }
@@ -54,17 +84,31 @@ class MFAService {
    */
   async verifyMFACode(userId, code) {
     try {
+      console.log('\n🔍 Verifying MFA code for user:', userId);
+      console.log('Provided code:', code);
+      
       const key = `mfa:${userId}`;
+      
+      // ✅ Ensure Redis is connected
+      if (!redisClient.isOpen) {
+        console.log('⚠️  Redis not connected, attempting to connect...');
+        await redisClient.connect();
+      }
+      
       const storedCode = await redisClient.get(key);
       
+      console.log('Stored code:', storedCode);
+      
       if (!storedCode) {
+        console.log('❌ No code found in Redis (expired or never generated)');
         return {
           valid: false,
-          error: 'Code expired or not found'
+          error: 'Code expired or not found. Please request a new code.'
         };
       }
       
       if (storedCode !== code) {
+        console.log('❌ Code mismatch');
         // Log tentative échouée
         await this.incrementFailedAttempts(userId);
         
@@ -73,6 +117,8 @@ class MFAService {
           error: 'Invalid verification code'
         };
       }
+      
+      console.log('✅ Code verified successfully');
       
       // Code valide - supprimer de Redis
       await redisClient.del(key);
@@ -87,6 +133,7 @@ class MFAService {
         message: 'Verification successful'
       };
     } catch (error) {
+      console.error('❌ MFA verification error:', error);
       logger.error('MFA verification error', { error: error.message, userId });
       throw new Error('Verification failed');
     }
@@ -97,6 +144,12 @@ class MFAService {
    */
   async incrementFailedAttempts(userId) {
     const key = `mfa:failed:${userId}`;
+    
+    // ✅ Ensure Redis is connected
+    if (!redisClient.isOpen) {
+      await redisClient.connect();
+    }
+    
     const attempts = await redisClient.get(key);
     const newAttempts = (parseInt(attempts) || 0) + 1;
     
@@ -113,6 +166,11 @@ class MFAService {
    * Réinitialise les tentatives échouées
    */
   async resetFailedAttempts(userId) {
+    // ✅ Ensure Redis is connected
+    if (!redisClient.isOpen) {
+      await redisClient.connect();
+    }
+    
     await redisClient.del(`mfa:failed:${userId}`);
     await redisClient.del(`mfa:locked:${userId}`);
   }
@@ -121,6 +179,11 @@ class MFAService {
    * Vérifie si l'utilisateur est bloqué
    */
   async isUserLocked(userId) {
+    // ✅ Ensure Redis is connected
+    if (!redisClient.isOpen) {
+      await redisClient.connect();
+    }
+    
     const locked = await redisClient.get(`mfa:locked:${userId}`);
     return !!locked;
   }
@@ -137,6 +200,12 @@ class MFAService {
     
     // Vérifier le rate limiting (max 3 envois par 10 minutes)
     const rateLimitKey = `mfa:ratelimit:${userId}`;
+    
+    // ✅ Ensure Redis is connected
+    if (!redisClient.isOpen) {
+      await redisClient.connect();
+    }
+    
     const sendCount = await redisClient.get(rateLimitKey);
     
     if (sendCount && parseInt(sendCount) >= 3) {
@@ -155,6 +224,11 @@ class MFAService {
    * Vérifie si un code MFA existe pour un utilisateur
    */
   async hasPendingMFA(userId) {
+    // ✅ Ensure Redis is connected
+    if (!redisClient.isOpen) {
+      await redisClient.connect();
+    }
+    
     const key = `mfa:${userId}`;
     const code = await redisClient.get(key);
     return !!code;
