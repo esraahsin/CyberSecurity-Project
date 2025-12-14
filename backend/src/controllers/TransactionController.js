@@ -274,25 +274,31 @@ class TransactionController {
     }
   }
 
-  /**
-   * GET /api/transactions
-   * Liste toutes les transactions de l'utilisateur
-   */
-  async listUserTransactions(req, res, next) {
+  // backend/src/controllers/TransactionController.js
+// Replace the listUserTransactions method
+
+/**
+ * GET /api/transactions
+ * Liste toutes les transactions de l'utilisateur
+ */
+async listUserTransactions(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const { page = 1, limit = 20, startDate, endDate, type, status } = req.query;
+
+    console.log('📊 Fetching transactions for user:', userId, {
+      page,
+      limit,
+      type,
+      status,
+      startDate,
+      endDate
+    });
+
+    // ✅ Call service with proper error handling
+    let result;
     try {
-      const userId = req.user.id;
-      const { page = 1, limit = 20, startDate, endDate, type, status } = req.query;
-
-      console.log('📊 Fetching transactions for user:', userId, {
-        page,
-        limit,
-        type,
-        status,
-        startDate,
-        endDate
-      });
-
-      const result = await transactionService.getUserTransactions(userId, {
+      result = await transactionService.getUserTransactions(userId, {
         page: parseInt(page),
         limit: parseInt(limit),
         startDate,
@@ -300,51 +306,66 @@ class TransactionController {
         type,
         status
       });
-
-      console.log('✅ Transactions fetched:', {
-        count: result.transactions?.length || 0,
-        total: result.pagination?.total || 0
-      });
-
-      // ✅ Always return valid response even with no data
-      res.status(200).json({
-        success: true,
-        data: {
-          transactions: result.transactions || [],
-          pagination: result.pagination || {
-            page: parseInt(page),
-            limit: parseInt(limit),
-            total: 0,
-            totalPages: 0
-          }
+    } catch (serviceError) {
+      console.error('❌ Service error:', serviceError);
+      // If service fails, return empty result
+      result = {
+        transactions: [],
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: 0,
+          totalPages: 0
         }
-      });
-    } catch (error) {
-      console.error('❌ List User Transactions Error:', error);
-      logger.logError(error, { 
-        context: 'List User Transactions',
-        userId: req.user?.id,
-        query: req.query
-      });
-      
-      // ✅ Return proper error response instead of crashing
-      res.status(500).json({
-        success: false,
-        error: 'Failed to load transactions',
-        message: error.message,
-        data: {
-          transactions: [],
-          pagination: {
-            page: parseInt(req.query.page || 1),
-            limit: parseInt(req.query.limit || 20),
-            total: 0,
-            totalPages: 0
-          }
-        }
-      });
+      };
     }
-  }
 
+    console.log('✅ Transactions fetched:', {
+      count: result.transactions?.length || 0,
+      total: result.pagination?.total || 0
+    });
+
+    // ✅ ALWAYS return valid response structure
+    const responseData = {
+      transactions: Array.isArray(result.transactions) ? result.transactions : [],
+      pagination: result.pagination || {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: 0,
+        totalPages: 0
+      }
+    };
+
+    res.status(200).json({
+      success: true,
+      data: responseData
+    });
+
+  } catch (error) {
+    console.error('❌ List User Transactions Error:', error);
+    logger.logError(error, { 
+      context: 'List User Transactions',
+      userId: req.user?.id,
+      query: req.query
+    });
+    
+    // ✅ Return proper error response with empty data structure
+    res.status(200).json({
+      success: true,
+      data: {
+        transactions: [],
+        pagination: {
+          page: parseInt(req.query.page || 1),
+          limit: parseInt(req.query.limit || 20),
+          total: 0,
+          totalPages: 0
+        }
+      },
+      error: 'Failed to load transactions',
+      message: error.message
+    });
+  }
+}
   /**
    * GET /api/transactions/:id
    * Récupère les détails d'une transaction

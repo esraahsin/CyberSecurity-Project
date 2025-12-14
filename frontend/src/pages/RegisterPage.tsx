@@ -250,7 +250,7 @@ const RegisterPage: React.FC = () => {
 
         {/* Footer */}
         <div className="mt-8 text-center text-sm text-gray-600">
-          <p>© 2024 SecureBank. All rights reserved.</p>
+          <p>© 2025 SecureBank. All rights reserved.</p>
         </div>
       </div>
     </div>
